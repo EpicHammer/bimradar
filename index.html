@@ -1,0 +1,1231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BimRadar — Elias Hammer</title>
+  <meta name="description" content="Live map of Graz Bims, buses and trains — tracked in real time.">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d0f12; --fg: #e8eaed; --muted: #9aa0a6; --accent: #6ea8fe;
+      --line: #23262b; --card: #14171c; --ink-2: #c3c2b7; --ink-3: #898781;
+      --tram: #e66767; --bus: #3987e5; --regio: #008300; --night: #9085e9; --train: #898781;
+      --ok: #199e70;
+    }
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f5f6f8; --fg: #1a1c1e; --muted: #5f6368; --accent: #1a6dff;
+      --line: #e4e4e1; --card: #ffffff; --ink-2: #52514e; --ink-3: #898781;
+      --tram: #e34948; --bus: #2a78d6; --regio: #008300; --night: #4a3aa7; --train: #898781;
+      --ok: #1baf7a;
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        color-scheme: light;
+        --bg: #f5f6f8; --fg: #1a1c1e; --muted: #5f6368; --accent: #1a6dff;
+        --line: #e4e4e1; --card: #ffffff; --ink-2: #52514e; --ink-3: #898781;
+        --tram: #e34948; --bus: #2a78d6; --regio: #008300; --night: #4a3aa7; --train: #898781;
+        --ok: #1baf7a;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    html, body { max-width: 100%; overflow-x: hidden; }
+    body { margin: 0; color: var(--fg); background: var(--bg); overflow: hidden;
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #mapstage { position: fixed; inset: 0; }
+    #map { width: 100%; height: 100%; background: #242f3e; }
+    :root[data-theme="light"] #map { background: #e9ecef; }
+
+    main {
+      position: fixed; top: 0; left: 0; bottom: 0; width: min(340px, 100vw);
+      z-index: 5; overflow-y: auto; overscroll-behavior: contain;
+      background: color-mix(in srgb, var(--card) 88%, transparent);
+      backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+      border-right: 1px solid var(--line); padding: .9rem 1.05rem;
+      box-shadow: 8px 0 40px rgba(0,0,0,.3); transition: transform .28s ease;
+    }
+    body.panel-hidden main { transform: translateX(-105%); }
+    #panelshow { position: fixed; top: 14px; left: 14px; z-index: 6; display: none; }
+    body.panel-hidden #panelshow { display: grid; }
+    @media (max-width: 44rem) {
+      /* The map fills the viewport; the panel is a sheet ANCHORED TO THE VIEWPORT
+         (position: fixed, bottom: 0). Keeping it in document flow was what left a
+         black gap and let the stub slide under Safari's toolbar. */
+      body { overflow: hidden; }
+      #mapstage { position: fixed; inset: 0; left: 0; right: 0; width: 100%; height: 100dvh; }
+      main {
+        position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+        width: 100%; max-width: 100%; margin: 0;
+        max-height: 78dvh; overflow-y: auto; overscroll-behavior: contain;
+        border-right: 0; border-radius: 18px 18px 0 0;
+        box-shadow: 0 -12px 40px rgba(0,0,0,.38);
+        padding-bottom: calc(.9rem + env(safe-area-inset-bottom, 0px));
+        transition: transform .28s ease, opacity .2s ease;
+      }
+      /* long stop names must wrap, not stretch the layout */
+      .fieldwrap input { min-width: 0; scroll-margin-top: 12px; }
+      .opt, .opt .chain, #results { max-width: 100%; overflow-wrap: anywhere; }
+      body.panel-hidden main { transform: translateY(110%); opacity: 0; pointer-events: none; }
+    }
+
+    header { display: flex; align-items: center; justify-content: space-between; gap: .8rem; margin-bottom: .5rem; }
+    h1 { font-size: 1.3rem; margin: 0; font-weight: 700; letter-spacing: -0.02em; }
+    h1 small { display: block; font-size: .74rem; font-weight: 500; color: var(--muted); }
+    .hright { display: flex; gap: .4rem; }
+    .tbtn { width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--line);
+      background: var(--card); color: var(--fg); font-size: 1rem; cursor: pointer; display: grid; place-items: center; }
+    .tbtn:hover { border-color: var(--accent); }
+    #panelshow { width: 38px; height: 38px; box-shadow: 0 6px 20px rgba(0,0,0,.3); }
+    .grabber { display: none; }
+    /* desktop: the panel slides left, so the chevron points left */
+    #panelhide::before { content: "\2039"; font-size: 1.2rem; line-height: 1; }
+
+    .live .pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); position: relative; }
+    .live .pulse::after { content: ""; position: absolute; inset: -4px; border-radius: 50%;
+      border: 2px solid var(--ok); animation: ping 1.6s ease-out infinite; }
+    @keyframes ping { from { transform: scale(.6); opacity: .9; } to { transform: scale(1.7); opacity: 0; } }
+    .livedot.stale .pulse, .livedot.stale .pulse::after { background: var(--tram); border-color: var(--tram); animation: none; }
+
+    .iw .ln.sm { font-size: .78rem; padding: 0 .35rem; min-width: 1.9em; text-align: center; }
+
+    .chiprow { display: flex; align-items: center; gap: .3rem; margin: .1rem 0 .8rem; flex-wrap: wrap; }
+    .vchip {
+      display: inline-flex; align-items: center; gap: .3rem;
+      border: 1px solid var(--line); background: var(--card); color: var(--fg);
+      font: inherit; font-size: .76rem; border-radius: 999px;
+      padding: .22rem .5rem .22rem .38rem; cursor: pointer;
+      transition: border-color .12s ease, opacity .12s ease;
+    }
+    .vchip:hover { border-color: var(--accent); }
+    .vchip[aria-pressed="false"] { opacity: .38; }
+    .vchip i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .vchip b { font-variant-numeric: tabular-nums; font-weight: 650; }
+    .vchip .hbadge {
+      width: 13px; height: 13px; border-radius: 4px; background: #5b6472; color: #fff;
+      font-size: 8px; font-weight: 800; line-height: 13px; text-align: center; font-style: normal;
+    }
+    .livedot { margin-left: auto; display: inline-flex; }
+
+    .tripform { display: grid; gap: .5rem; }
+    .fieldwrap { position: relative; }
+    .fieldwrap input { width: 100%; font: inherit; font-size: 16px; color: var(--fg);
+      background: var(--card); border: 1px solid var(--line); border-radius: 11px;
+      padding: .58rem 4.3rem .58rem .7rem; }
+    .fieldwrap input:focus { outline: none; border-color: var(--accent); }
+    .fieldwrap input.armed { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+    .pickhint { margin: -.15rem 0 0; font-size: .74rem; color: var(--accent); }
+    .minis { position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+      display: flex; gap: 2px; }
+    .mini { width: 30px; height: 30px; border-radius: 8px; border: 0; background: transparent;
+      color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0; }
+    .mini:hover { color: var(--accent); }
+    .mini.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+    .sugg { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 9;
+      background: var(--card); border: 1px solid var(--line); border-radius: 11px;
+      overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.3); max-height: 240px; overflow-y: auto; }
+    .sugg { max-width: 100%; }
+    .sugg div { padding: .45rem .7rem; font-size: .84rem; cursor: pointer; overflow-wrap: anywhere; }
+    .sugg div:hover, .sugg div.on { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+    .sugg .k { color: var(--muted); font-size: .72rem; margin-right: .35rem; }
+    .sugg .dist { color: var(--muted); font-size: .72rem; margin-left: .4rem; }
+    .sugg .nores { color: var(--muted); font-size: .82rem; cursor: default; }
+    .gorow { display: flex; gap: .4rem; }
+    .clr { width: 46px; flex: none; border: 1px solid var(--line); border-radius: 11px;
+      background: transparent; color: var(--muted); font-size: 1rem; cursor: pointer; }
+    .clr:hover { border-color: var(--tram); color: var(--tram); }
+    .go { flex: 1; border: 0; border-radius: 11px; padding: .6rem; cursor: pointer;
+      background: var(--accent); color: #0b1220; font: inherit; font-weight: 700; font-size: .9rem; }
+    .go:disabled { opacity: .5; cursor: default; }
+
+    .opt { border: 1px solid var(--line); border-radius: 12px; padding: .6rem .7rem;
+      margin-top: .6rem; cursor: pointer; transition: border-color .12s ease; }
+    .opt:hover, .opt.sel { border-color: var(--accent); }
+    .opt .times { display: flex; align-items: baseline; gap: .5rem; font-weight: 700; font-size: .98rem; }
+    .opt .times .dur { margin-left: auto; font-weight: 600; font-size: .8rem; color: var(--muted); }
+    .opt .chain { display: flex; align-items: center; gap: .25rem; flex-wrap: wrap; margin-top: .4rem; }
+    .opt .badge { color: #fff; font-weight: 700; font-size: .76rem; border-radius: 6px; padding: .05rem .4rem; }
+    .opt .walk { color: var(--muted); font-size: .78rem; }
+    .opt .arrow { color: var(--muted); font-size: .7rem; }
+    .opt .meta { color: var(--muted); font-size: .75rem; margin-top: .3rem; }
+    .legs { margin-top: .5rem; border-top: 1px solid var(--line); padding-top: .45rem; display: none; }
+    .opt.sel .legs { display: block; }
+    .leg { display: flex; gap: .5rem; font-size: .8rem; margin-bottom: .3rem; }
+    .leg .lt { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 3.1em; }
+    .leg .lt.rt { color: #3fbf5f; font-weight: 650; }
+
+    .note { color: var(--muted); font-size: .78rem; line-height: 1.5; }
+    .err { color: var(--tram); font-size: .82rem; margin-top: .6rem; }
+    hr { border: 0; border-top: 1px solid var(--line); margin: .9rem 0; }
+    .gm-style .gm-style-iw-d { font: .85rem/1.5 system-ui, sans-serif; }
+    .iw b { display: block; font-size: 1rem; margin-bottom: .1rem; }
+    .iw .ln { display: inline-block; color: #fff; font-weight: 700; border-radius: 6px;
+      padding: 0 .4rem; margin-right: .35rem; }
+    .iw .canon { font-weight: 650; margin-top: .1rem; }
+    .iw .route { color: #444; font-size: .85rem; margin-top: .1rem; }
+    .iw .dirn, .iw .next { color: #666; font-size: .82rem; }
+    .iw .stops { margin-top: .45rem; border-top: 1px solid #ddd; padding-top: .35rem; }
+    .iw .strow { display: flex; gap: .5rem; font-size: .82rem; }
+    .iw .tm { font-variant-numeric: tabular-nums; color: #666; min-width: 2.8em; }
+    .iw .tm.rt { color: #0a7d28; font-weight: 650; }
+
+    /* mobile: the panel is a bottom sheet that slides DOWN, so the chevron points down.
+       This must come after the base rule above — equal specificity, last one wins. */
+    @media (max-width: 44rem) {
+      /* a bottom sheet collapses with a grab handle, not a chevron */
+      #panelhide { display: none; }
+      .grabber {
+        display: block; width: 100%; height: 46px; padding: 0; margin: -.6rem 0 .1rem;
+        background: transparent; border: 0; cursor: pointer; position: relative;
+        -webkit-tap-highlight-color: transparent; touch-action: none;
+      }
+      .grabber::before {
+        content: ""; position: absolute; left: 50%; top: 8px; transform: translateX(-50%);
+        width: 46px; height: 5px; border-radius: 999px; background: var(--line);
+        transition: background .15s ease, width .15s ease;
+      }
+      .grabber:active::before { background: var(--muted); width: 56px; }
+      .peek {
+        position: absolute; left: 0; right: 0; top: 20px;
+        font-size: .8rem; color: var(--muted); text-align: center;
+        opacity: 0; transition: opacity .2s ease; pointer-events: none;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 1rem;
+      }
+
+      /* COLLAPSED: slide the sheet down until only the handle + summary peek out.
+         The gesture then lives on our own element, never on the map's pan surface. */
+      body.panel-peek main {
+        transform: translateY(calc(100% - 58px - env(safe-area-inset-bottom, 0px)));
+        opacity: 1; pointer-events: auto;
+      }
+      body.panel-peek .peek { opacity: 1; }
+      /* the fully-hidden mode stays available as an escape hatch */
+      body.panel-hidden main { transform: translateY(110%); opacity: 0; pointer-events: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="mapstage"><div id="map"></div></div>
+  <button class="tbtn" id="panelshow" title="Show panel">☰</button>
+  <main>
+    <button class="grabber" id="grabber" title="Collapse panel" aria-label="Collapse panel">
+      <span class="peek" id="peek"></span>
+    </button>
+    <header>
+      <h1>BimRadar <small>Bims &amp; Busse, live in Graz</small></h1>
+      <div class="hright">
+        <button class="tbtn" id="themebtn" title="Light/dark">🌙</button>
+        <button class="tbtn" id="panelhide" title="Hide panel" aria-label="Hide panel"></button>
+      </div>
+    </header>
+
+    <div class="chiprow" id="chiprow" role="group" aria-label="Show on map">
+      <button class="vchip" id="f-tram" aria-pressed="true" title="Bims"><i style="background:var(--tram)"></i><b id="ct-tram">0</b></button>
+      <button class="vchip" id="f-bus" aria-pressed="true" title="Stadtbus"><i style="background:var(--bus)"></i><b id="ct-bus">0</b></button>
+      <button class="vchip" id="f-regio" aria-pressed="true" title="RegioBus"><i style="background:var(--regio)"></i><b id="ct-regio">0</b></button>
+      <button class="vchip" id="f-night" aria-pressed="true" title="Nachtlinien"><i style="background:var(--night)"></i><b id="ct-night">0</b></button>
+      <button class="vchip" id="f-train" aria-pressed="false" title="Züge"><i style="background:var(--train)"></i><b id="ct-train">0</b></button>
+      <button class="vchip stop" id="f-stops" aria-pressed="true" title="Haltestellen"><i class="hbadge">H</i><b id="ct-stops">–</b></button>
+      <span class="livedot" id="live" title="live feed"><span class="pulse"></span></span>
+    </div>
+    <p class="err" id="err" hidden></p>
+
+    <div class="tripform">
+      <div class="fieldwrap">
+        <input id="from" type="text" placeholder="From — stop, address…" autocomplete="off">
+        <span class="minis">
+          <button class="mini" id="pick-from" title="Pick on the map (no typing)">📍</button>
+          <button class="mini" id="usegeo" title="Use my location">◎</button>
+        </span>
+        <div class="sugg" id="sugg-from" hidden></div>
+      </div>
+      <div class="fieldwrap">
+        <input id="to" type="text" placeholder="To — where are you going?" autocomplete="off">
+        <span class="minis">
+          <button class="mini" id="pick-to" title="Pick on the map (no typing)">📍</button>
+          <button class="mini" id="swap" title="Swap">⇅</button>
+        </span>
+        <div class="sugg" id="sugg-to" hidden></div>
+      </div>
+        <p class="pickhint" id="pickhint" hidden></p>
+      <div class="gorow">
+        <button class="go" id="go">Find connections</button>
+        <button class="clr" id="clear" title="Clear search" aria-label="Clear search" hidden>✕</button>
+      </div>
+    </div>
+    <p class="err" id="triperr" hidden></p>
+    <div id="results"></div>
+    <p class="note" id="livetxt">connecting…</p>
+
+  </main>
+
+  <script>
+  (() => {
+    'use strict';
+    const $ = id => document.getElementById(id);
+    const GMAPS_KEY = 'AIzaSyABPLltpX2yofa69cX3gkQ0NaF7M6BbrNg';
+    const MAP_ID = 'a57680cb3f01046825559038';   // vector map: client-side WebGL, no tile seams
+    const GRAZ = { lat: 47.0707, lng: 15.4395 };
+
+    // ---------- HAFAS (Verbundlinie) ----------
+    const HAFAS_URL = 'https://verkehrsauskunft.verbundlinie.at/hamm/gate';
+    const HAFAS_AID = 'wf7mcf9bv3nv8g5f';
+    function hafas(meth, req) {
+      return fetch(HAFAS_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ver: '1.59', lang: 'deu', ext: 'VAO.22',
+          auth: { type: 'AID', aid: HAFAS_AID },
+          client: { id: 'VAO', l: 'vs_stv', type: 'AND' },
+          svcReqL: [{ meth, req }]
+        })
+      }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(d => {
+          const res = d.svcResL && d.svcResL[0];
+          if (!res || res.err && res.err !== 'OK') throw new Error((res && res.errTxt) || (res && res.err) || 'HAFAS error');
+          return res.res;
+        });
+    }
+
+    // prodCtx.line is "xxx" for long-distance services; the real designation is in name/nameS
+    function lineName(prod) {
+      const ctx = (prod && prod.prodCtx) || {};
+      const l = (ctx.line || '').trim();
+      if (l && l.toLowerCase() !== 'xxx') return l;
+      return ((prod && (prod.nameS || prod.name)) || '?').trim();
+    }
+    // Classify by HAFAS's own category text first — the numeric class bitmask is
+    // unreliable here (cls 32 is "Fernbus", a coach, not a train). Bitmask is fallback.
+    function kindOf(prod) {
+      const ctx = (prod && prod.prodCtx) || {};
+      const line = lineName(prod);
+      const cat = (ctx.catOutL || '').toLowerCase();
+      const cls = prod && prod.cls;
+
+      // night service outranks vehicle type — at 2am that is what matters
+      if (cat.indexOf('nacht') === 0 || ctx.catOutS === 's15' || /^N\d/i.test(line)) return 'night';
+      if (/stra(\u00df|ss)enbahn|tram/.test(cat)) return 'tram';
+      if (/s-?bahn|regionalzug|regional.?express|railjet|intercity|eurocity|nightjet|zug|bahn/.test(cat)) return 'train';
+      if (/stadtbus|citybus/.test(cat)) return 'bus';
+      if (/bus|taxi|ruf|sammel/.test(cat)) return 'regio';
+
+      if (cls === 16 || cls === 256) return 'tram';
+      if (cls === 128) return 'bus';
+      if (cls === 64 || cls === 32 || cls === 1024 || cls === 2048) return 'regio';
+      return 'train';
+    }
+    const KIND_COLOR = {
+      tram:  () => cssv('--tram'),  bus:   () => cssv('--bus'),
+      regio: () => cssv('--regio'), night: () => cssv('--night'),
+      train: () => cssv('--train')
+    };
+    const KIND_LABEL = { tram: 'Stra\u00dfenbahn', bus: 'Stadtbus', regio: 'RegioBus', night: 'Nachtlinie', train: 'Zug' };
+    // Official Graz tram line colours, sampled from the Verbund Linie Liniennetzplan
+    // (Stand 11. Juli 2026). These are what people actually recognise on the network map.
+    const LINE_COLOR = {
+      '1': '#00ade7', '3': '#61bc2e', '4': '#cfa70e', '5': '#1a4f90',
+      '6': '#206342', '16': '#206342', '7': '#cf181f', '17': '#cf181f',
+      '23': '#9a4fad', '11': '#00ade7', '14': '#cfa70e'
+    };
+    // trams wear their real line colour; everything else keeps its category colour
+    function vehColor(kind, line) {
+      if (kind === 'tram') {
+        const l = String(line || '').trim();
+        if (LINE_COLOR[l]) return LINE_COLOR[l];
+        const bare = l.replace(/[^0-9]/g, '');        // E1 -> 1, 4E -> 4
+        if (LINE_COLOR[bare]) return LINE_COLOR[bare];
+      }
+      return KIND_COLOR[kind] ? KIND_COLOR[kind]() : cssv('--train');
+    }
+    const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+    // ---------- state ----------
+    let map = null, gLoading = false, info = null;
+    // canonical line names (termini) from the official Verbund Steiermark GTFS feed
+    let LINES = {};
+    fetch('./lines.json').then(r => r.ok ? r.json() : {}).then(d => { LINES = d; }).catch(() => {});
+    const vehicles = new Map();   // jid -> {marker, kind, line, dir, from, to, t0, dur, head}
+    const filters = { tram: true, bus: true, regio: true, night: true, train: false };
+    let pollTimer = null, lastOk = 0, inFlight = false;
+    const stops = new Map();          // extId -> marker
+    let stopsOn = true, stopsBusy = false, lastStopKey = '';
+    const STOP_MIN_ZOOM = 14;
+
+    // ---------- google maps bootstrap ----------
+    function ensureMaps() {
+      if (window.google && google.maps) return true;
+      if (gLoading) return false;
+      gLoading = true;
+      window.__bmReady = initMap;
+      const s = document.createElement('script');
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(GMAPS_KEY) + '&callback=__bmReady&v=weekly';
+      s.async = true;
+      s.onerror = () => showErr('Google Maps failed to load — check your connection.');
+      document.head.appendChild(s);
+      return false;
+    }
+
+    function mapOptions() {
+      return {
+        center: GRAZ, zoom: 13,
+        mapId: MAP_ID,
+        colorScheme: isDark() ? 'DARK' : 'LIGHT',
+        mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
+        zoomControl: false, cameraControl: false, rotateControl: false,
+        gestureHandling: 'greedy', clickableIcons: false
+      };
+    }
+    function initMap() {
+      map = new google.maps.Map($('map'), mapOptions());
+      info = new google.maps.InfoWindow();
+      info.addListener('closeclick', () => { clearRoute(); });
+      map.addListener('click', ev => {
+        if (armed && ev.latLng) { pickPoint(armed, ev.latLng); return; }
+        info.close(); clearRoute();
+      });
+      map.addListener('idle', () => { poll(); loadStops(); });
+      map.addListener('zoom_changed', () => {
+        for (const m of stops.values()) m.setIcon(stopIcon(m.__tram));
+      });
+      poll();
+      if (!pollTimer) pollTimer = setInterval(poll, 7000);
+      requestAnimationFrame(animate);
+    }
+    // colorScheme is fixed at construction, so switching theme rebuilds the map
+    function rebuildMap() {
+      if (!map) return;
+      const c = map.getCenter(), z = map.getZoom();
+      for (const v of vehicles.values()) { v.marker.setMap(null); if (v.tag) v.tag.setMap(null); }
+      vehicles.clear();
+      clearStops(); clearRoute(); clearTripLine();
+      lastStopKey = '';
+      const opts = mapOptions();
+      opts.center = { lat: c.lat(), lng: c.lng() }; opts.zoom = z;
+      map = new google.maps.Map($('map'), opts);
+      info = new google.maps.InfoWindow();
+      info.addListener('closeclick', () => { clearRoute(); });
+      map.addListener('click', ev => {
+        if (armed && ev.latLng) { pickPoint(armed, ev.latLng); return; }
+        info.close(); clearRoute();
+      });
+      map.addListener('idle', () => { poll(); loadStops(); });
+      poll(); loadStops();
+    }
+
+    // ---------- vehicle models (top-down silhouettes, rotated to heading) ----------
+    const MODEL = {
+      // long body, tapered cab — reads as a tram from above
+      tram: 'M 0,-16 L 5,-11 L 5,12 Q 5,14.5 2.6,14.5 L -2.6,14.5 Q -5,14.5 -5,12 L -5,-11 Z',
+      // shorter, rounded nose
+      bus:  'M 0,-11.5 Q 4.4,-11.5 4.4,-8 L 4.4,8.5 Q 4.4,11 2.2,11 L -2.2,11 Q -4.4,11 -4.4,8.5 L -4.4,-8 Q -4.4,-11.5 0,-11.5 Z',
+      // longest, blunt front
+      train: 'M 0,-18 L 4.6,-13 L 4.6,14 Q 4.6,16.5 2.3,16.5 L -2.3,16.5 Q -4.6,16.5 -4.6,14 L -4.6,-13 Z'
+    };
+    function vIcon(kind, head, line) {
+      return {
+        path: MODEL[kind === 'tram' ? 'tram' : kind === 'train' ? 'train' : 'bus'],
+        fillColor: vehColor(kind, line), fillOpacity: 1,
+        strokeColor: '#ffffff', strokeWeight: 1.8,
+        rotation: head || 0, scale: 1,
+        anchor: new google.maps.Point(0, 0)
+      };
+    }
+    // the line number rides in a second, unrotated marker just below the model
+    function tagIcon() {
+      return { path: 'M 0,0 L 0,0', scale: 1, strokeOpacity: 0, fillOpacity: 0,
+               labelOrigin: new google.maps.Point(0, 23) };
+    }
+    function tagLabel(line) {
+      return { text: line, color: cssv('--fg'), fontSize: '11px', fontWeight: '700' };
+    }
+    function makeMarker(v) {
+      const body = new google.maps.Marker({
+        map, position: v.to, icon: vIcon(v.kind, v.head, v.line),
+        zIndex: v.kind === 'tram' ? 30 : 20
+      });
+      const tag = new google.maps.Marker({
+        map, position: v.to, icon: tagIcon(), label: tagLabel(v.line),
+        zIndex: v.kind === 'tram' ? 31 : 21, clickable: false
+      });
+      v.tag = tag;
+      return body;
+    }
+    function makeMarker(v) {
+      return new google.maps.Marker({
+        map, position: v.to, icon: vIcon(v.kind, v.head, v.line), zIndex: v.kind === 'tram' ? 3 : 2,
+        label: { text: v.line, color: cssv('--fg'), fontSize: '11px', fontWeight: '700' }
+      });
+    }
+
+    // ---------- stops (live from HAFAS, no GTFS needed) ----------
+    // Haltestelle badge: the "H" sign locals actually look for on the street.
+    // Image icons (not vector symbols) so we can draw the glyph in two colours.
+    function stopIcon(isTram) {
+      const fill = isTram ? KIND_COLOR.tram() : '#5b6472';
+      const z = map ? map.getZoom() : 15;
+      const base = z >= 17 ? 22 : z >= 16 ? 19 : z >= 15 ? 16 : 13;
+      const size = isTram ? base : Math.round(base * 0.85);
+      const svg =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">' +
+          '<rect x="1.6" y="1.6" width="14.8" height="14.8" rx="4.6" fill="' + fill + '" ' +
+            'stroke="#ffffff" stroke-width="2"/>' +
+          '<rect x="5.9" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
+          '<rect x="10.2" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
+          '<rect x="5.9" y="8.1" width="6.2" height="1.9" fill="#ffffff"/>' +
+        '</svg>';
+      return {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+        scaledSize: new google.maps.Size(size, size),
+        anchor: new google.maps.Point(size / 2, size / 2)
+      };
+    }
+    function clearStops() { for (const m of stops.values()) m.setMap(null); stops.clear(); }
+
+    async function loadStops() {
+      if (!map || !stopsOn || stopsBusy) return;
+      if (map.getZoom() < STOP_MIN_ZOOM) { clearStops(); lastStopKey = ''; return; }
+      const c = map.getCenter(), b = map.getBounds();
+      if (!c || !b) return;
+      // one ring query covering the viewport, capped so we never ask for the world
+      const ne = b.getNorthEast();
+      const dLat = (ne.lat() - c.lat()) * 111320, dLng = (ne.lng() - c.lng()) * 111320 * Math.cos(c.lat() * Math.PI / 180);
+      const radius = Math.min(4000, Math.round(Math.hypot(dLat, dLng)));
+      const key = c.lat().toFixed(3) + ',' + c.lng().toFixed(3) + ',' + radius;
+      if (key === lastStopKey) return;      // viewport barely moved — keep what we have
+      stopsBusy = true;
+      try {
+        const res = await hafas('LocGeoPos', {
+          ring: { cCrd: { x: Math.round(c.lng() * 1e6), y: Math.round(c.lat() * 1e6) }, maxDist: radius, minDist: 0 },
+          getStops: true, getPOIs: false, maxLoc: 400
+        });
+        lastStopKey = key;
+        const seen = new Set();
+        const all = res.locL || [];
+        // HAFAS lists every platform separately (Jakominiplatz comes back 4×).
+        // mMastLocX points at the parent station, so group by it and draw one badge.
+        const groups = new Map();
+        all.forEach((l, i) => {
+          if (!l.crd || l.type !== 'S') return;
+          // Group quays into their station. Prefer the globalId station prefix
+          // (at:46:3046 — stable across responses); mMastLocX is only an index
+          // into *this* payload, so it can shift between polls.
+          const gid = (l.globalIdL && l.globalIdL[0] && l.globalIdL[0].id) || '';
+          const parts = gid.split(':');
+          const key = parts.length >= 3 ? parts.slice(0, 3).join(':')
+                    : (l.mMastLocX != null && all[l.mMastLocX]) ? 'm' + l.mMastLocX : 'i' + i;
+          const master = (l.mMastLocX != null && all[l.mMastLocX]) ? all[l.mMastLocX] : l;
+          const isTram = !!(l.pCls & 16);
+          const g = groups.get(key);
+          if (!g) groups.set(key, { loc: master, tram: isTram });
+          else g.tram = g.tram || isTram;      // tram-served if ANY quay is
+        });
+        for (const [key, g] of groups) {
+          const l = g.loc;
+          const id = key;
+          seen.add(id);
+          if (stops.has(id)) continue;
+          const m = new google.maps.Marker({
+            map, position: { lat: l.crd.y / 1e6, lng: l.crd.x / 1e6 },
+            icon: stopIcon(g.tram), title: shortStop(l.name), zIndex: 5
+          });
+          m.__lid = l.lid; m.__name = shortStop(l.name); m.__tram = g.tram;
+          m.addListener('click', () => openStop(m));
+          stops.set(id, m);
+        }
+        // drop stops well outside the current view to keep the map light
+        for (const [id, m] of stops) {
+          if (!seen.has(id) && !b.contains(m.getPosition())) { m.setMap(null); stops.delete(id); }
+        }
+      } catch (e) { /* stops are a bonus layer; vehicles keep working */ }
+      finally { stopsBusy = false; }
+    }
+
+    async function openStop(m) {
+      if (armed) {                       // a field is waiting — use this stop for it
+        trip[armed] = { lid: m.__lid, name: m.__name };
+        $(armed).value = m.__name;
+        dropPin(armed, m.getPosition(), m.__name);
+        setArmed(null);
+        updateClearBtn();
+        return;
+      }
+      const box = document.createElement('div');
+      box.className = 'iw';
+      const h = document.createElement('b'); h.textContent = m.__name;
+      box.append(h, document.createTextNode('Loading departures…'));
+      info.setContent(box); info.open({ map, anchor: m });
+      try {
+        const res = await hafas('StationBoard', { type: 'DEP', stbLoc: { lid: m.__lid }, maxJny: 8 });
+        const prodL = (res.common && res.common.prodL) || [];
+        const rows = document.createElement('div'); rows.className = 'stops';
+        for (const j of (res.jnyL || [])) {
+          const prod = prodL[j.prodX] || {};
+          const st = j.stbStop || {};
+          const t = hafasTime(st.dTimeR || st.dTimeS);
+          const kind = kindOf(prod);
+          const row = document.createElement('div'); row.className = 'strow';
+          const tm = document.createElement('span');
+          tm.className = 'tm' + (st.dTimeR ? ' rt' : ''); tm.textContent = t || '';
+          const ln = document.createElement('span');
+          ln.className = 'ln sm'; ln.style.background = vehColor(kind, lineName(prod));
+          ln.textContent = lineName(prod);
+          row.append(tm, ln, document.createTextNode(j.dirTxt || ''));
+          rows.appendChild(row);
+        }
+        box.replaceChildren(h, rows.children.length ? rows : document.createTextNode('No departures right now.'));
+      } catch (e) {
+        box.replaceChildren(h, document.createTextNode('Departures unavailable.'));
+      }
+    }
+
+    // ---------- polling ----------
+    const bearing = (a, b) => {
+      const φ1 = a.lat * Math.PI / 180, φ2 = b.lat * Math.PI / 180, Δλ = (b.lng - a.lng) * Math.PI / 180;
+      const y = Math.sin(Δλ) * Math.cos(φ2);
+      const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    };
+    async function poll() {
+      if (!map || inFlight) return;
+      inFlight = true;
+      try {
+        const b = map.getBounds();
+        if (!b) { inFlight = false; return; }
+        const sw = b.getSouthWest(), ne = b.getNorthEast();
+        const res = await hafas('JourneyGeoPos', {
+          maxJny: 220, onlyRT: false,
+          rect: {
+            llCrd: { x: Math.round(sw.lng() * 1e6), y: Math.round(sw.lat() * 1e6) },
+            urCrd: { x: Math.round(ne.lng() * 1e6), y: Math.round(ne.lat() * 1e6) }
+          }
+        });
+        ingest(res);
+        lastOk = Date.now();
+        $('err').hidden = true;
+      } catch (e) {
+        showErr('Live feed hiccup (' + e.message + ') — retrying…');
+      } finally {
+        inFlight = false;
+        updateLive();
+      }
+    }
+
+    // HAFAS times are "HHMMSS" or "ddHHMMSS" (dd = day offset)
+    function hafasTime(t) {
+      if (!t) return null;
+      const s = String(t).length === 8 ? String(t).slice(2) : String(t);
+      return s.slice(0, 2) + ':' + s.slice(2, 4);
+    }
+    const shortStop = n => (n || '').replace(/^Graz /, '');
+
+    function ingest(res) {
+      const prodL = (res.common && res.common.prodL) || [];
+      const locL = (res.common && res.common.locL) || [];
+      const jnyL = res.jnyL || [];
+      const now = Date.now();
+      const seen = new Set();
+      const counts = { tram: 0, bus: 0, regio: 0, night: 0, train: 0 };
+
+      for (const j of jnyL) {
+        if (!j.pos) continue;
+        const prod = prodL[j.prodX] || {};
+        const kind = kindOf(prod);
+        counts[kind]++;
+        const jid = j.jid;
+        seen.add(jid);
+        const to = { lat: j.pos.y / 1e6, lng: j.pos.x / 1e6 };
+        const ctx = prod.prodCtx || {};
+        const line = lineName(prod);
+        const dir = j.dirTxt || '';
+        // radar's stopL is [origin, previous, next, destination] — real names, no extra call
+        const st = j.stopL || [];
+        const nameAt = i => (st[i] && locL[st[i].locX]) ? shortStop(locL[st[i].locX].name) : '';
+        const kindName = (ctx.catOutL || '').trim() || (prod.name || '').replace(/\s*\S+$/, '').trim();
+        const nextIdx = st.length >= 3 ? st.length - 2 : -1;
+        const nextStop = nextIdx >= 0 ? nameAt(nextIdx) : '';
+        const nextTime = nextIdx >= 0 && st[nextIdx]
+          ? hafasTime(st[nextIdx].aTimeR || st[nextIdx].aTimeS || st[nextIdx].dTimeR || st[nextIdx].dTimeS) : null;
+        const meta = { kindName, origin: nameAt(0), dest: nameAt(st.length - 1), nextStop, nextTime, jid };
+        let v = vehicles.get(jid);
+        if (!v) {
+          v = { kind, line, dir, from: to, to, t0: now, dur: 0, head: 0, ...meta };
+          v.marker = makeMarker(v);
+          v.marker.addListener('click', () => openInfo(v));
+          vehicles.set(jid, v);
+        } else {
+          // start a glide from the current interpolated spot to the new report
+          const cur = curPos(v, now);
+          if (cur.lat !== to.lat || cur.lng !== to.lng) v.head = bearing(cur, to);
+          v.from = cur; v.to = to; v.t0 = now; v.dur = 7000;
+          v.kind = kind; v.line = line; v.dir = dir; Object.assign(v, meta);
+          v.marker.setIcon(vIcon(v.kind, v.head, v.line));
+          if (v.tag) v.tag.setLabel(tagLabel(v.line));
+        }
+      }
+      // remove vehicles that left the viewport / feed
+      for (const [jid, v] of vehicles) {
+        if (!seen.has(jid)) { v.marker.setMap(null); if (v.tag) v.tag.setMap(null); vehicles.delete(jid); }
+      }
+      for (const k of ['tram', 'bus', 'regio', 'night', 'train']) $('ct-' + k).textContent = counts[k];
+      applyFilter();
+    }
+
+    const lerp = (a, b, t) => a + (b - a) * t;
+    function curPos(v, now) {
+      if (!v.dur) return v.to;
+      const t = Math.min(1, (now - v.t0) / v.dur);
+      return { lat: lerp(v.from.lat, v.to.lat, t), lng: lerp(v.from.lng, v.to.lng, t) };
+    }
+    function animate() {
+      const now = Date.now();
+      for (const v of vehicles.values()) {
+        if (v.marker.getMap()) {
+          const p = curPos(v, now);
+          v.marker.setPosition(p);
+          if (v.tag) v.tag.setPosition(p);
+        }
+      }
+      requestAnimationFrame(animate);
+    }
+
+    function applyFilter() {
+      let shown = 0;
+      for (const v of vehicles.values()) {
+        const on = filters[v.kind];
+        v.marker.setMap(on ? map : null);
+        if (v.tag) v.tag.setMap(on ? map : null);
+        if (on) shown++;
+      }
+      return shown;
+    }
+    function updateLive() {
+      const fresh = Date.now() - lastOk < 20000 && lastOk > 0;
+      const n = [...vehicles.values()].filter(v => filters[v.kind]).length;
+      if (document.body.classList.contains('panel-peek')) updatePeek();
+      $('live').classList.toggle('stale', !fresh);
+      $('live').title = fresh ? 'live feed OK' : 'live feed interrupted';
+      $('ct-stops').textContent = !stopsOn ? '–'
+        : (map && map.getZoom() < STOP_MIN_ZOOM) ? '·' : stops.size;
+      if (!fresh) {
+        $('livetxt').textContent = lastOk ? 'reconnecting to the live feed…' : 'connecting…';
+      } else if (n > 0) {
+        $('livetxt').textContent = n + ' vehicles moving in view · tap one for its line';
+      } else {
+        const hidden = vehicles.size;   // in view but filtered out
+        $('livetxt').textContent = hidden
+          ? hidden + ' vehicles here are hidden by your filters'
+          : 'Nothing moving in this view — zoom out, or it may simply be a quiet hour';
+      }
+    }
+    // HAFAS ships routes as Google-encoded polylines (lat,lng order, 1e5 precision)
+    function decodePath(str) {
+      const pts = []; let i = 0, lat = 0, lng = 0;
+      while (i < str.length) {
+        for (let k = 0; k < 2; k++) {
+          let shift = 0, res = 0, b;
+          do { b = str.charCodeAt(i++) - 63; res |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+          const d = (res & 1) ? ~(res >> 1) : (res >> 1);
+          if (k === 0) lat += d; else lng += d;
+        }
+        pts.push({ lat: lat / 1e5, lng: lng / 1e5 });
+      }
+      return pts;
+    }
+    let routeLine = null;
+    function clearRoute() { if (routeLine) { routeLine.setMap(null); routeLine = null; } }
+
+    async function drawRoute(v, box) {
+      try {
+        const res = await hafas('JourneyDetails', { jid: v.jid, getPolyline: true, getPasslist: true });
+        const poly = res.common && res.common.polyL && res.common.polyL[0];
+        if (poly && poly.crdEncYX) {
+          clearRoute();
+          routeLine = new google.maps.Polyline({
+            path: decodePath(poly.crdEncYX), map,
+            strokeColor: KIND_COLOR[v.kind](), strokeOpacity: 0.75, strokeWeight: 4, zIndex: 1
+          });
+        }
+        // remaining stops with times, straight from the live journey
+        const locL = (res.common && res.common.locL) || [];
+        const stops = (res.journey && res.journey.stopL) || [];
+        const nowHM = new Date().toTimeString().slice(0, 5);
+        const upcoming = stops
+          .map(st => ({
+            name: locL[st.locX] ? shortStop(locL[st.locX].name) : '',
+            t: hafasTime(st.aTimeR || st.aTimeS || st.dTimeR || st.dTimeS),
+            rt: !!(st.aTimeR || st.dTimeR)
+          }))
+          .filter(x => x.name && x.t && x.t >= nowHM).slice(0, 5);
+        if (upcoming.length) {
+          const ul = document.createElement('div');
+          ul.className = 'stops';
+          for (const u of upcoming) {
+            const row = document.createElement('div');
+            row.className = 'strow';
+            const tm = document.createElement('span');
+            tm.className = 'tm' + (u.rt ? ' rt' : '');
+            tm.textContent = u.t;
+            row.append(tm, document.createTextNode(u.name));
+            ul.appendChild(row);
+          }
+          box.appendChild(ul);
+        }
+      } catch (e) { /* details are a bonus; the marker info already stands alone */ }
+    }
+
+    function openInfo(v) {
+      const col = KIND_COLOR[v.kind]();
+      const box = document.createElement('div');
+      box.className = 'iw';
+
+      const head = document.createElement('b');
+      const ln = document.createElement('span');
+      ln.className = 'ln'; ln.style.background = vehColor(v.kind, v.line); ln.textContent = v.line;
+      head.append(ln, document.createTextNode(v.kindName || KIND_LABEL[v.kind] || ''));
+      box.appendChild(head);
+
+      // the line's canonical name (GTFS), e.g. "Andritz – Puntigam Bahnhof"
+      const canon = LINES[v.line];
+      if (canon) {
+        const c = document.createElement('div');
+        c.className = 'canon'; c.textContent = canon.n;
+        box.appendChild(c);
+      }
+      // this particular run: where it actually started and ends today
+      if (v.origin && v.dest) {
+        const rt = document.createElement('div');
+        rt.className = 'route';
+        rt.textContent = (canon ? 'Diese Fahrt: ' : '') + v.origin + ' → ' + v.dest;
+        box.appendChild(rt);
+      }
+      if (v.dir && v.dir !== v.dest) {
+        const d = document.createElement('div');
+        d.className = 'dirn'; d.textContent = 'Richtung ' + v.dir;
+        box.appendChild(d);
+      }
+      if (v.nextStop) {
+        const nx = document.createElement('div');
+        nx.className = 'next';
+        nx.textContent = 'Next: ' + v.nextStop + (v.nextTime ? ' · ' + v.nextTime : '');
+        box.appendChild(nx);
+      }
+
+      info.setContent(box);
+      info.open({ map, anchor: v.marker });
+      drawRoute(v, box);
+    }
+    function showErr(msg) { $('err').textContent = msg; $('err').hidden = false; }
+
+    $('f-stops').addEventListener('click', () => {
+      stopsOn = !stopsOn;
+      $('f-stops').setAttribute('aria-pressed', String(stopsOn));
+      if (!stopsOn) { clearStops(); lastStopKey = ''; } else loadStops();
+    });
+
+    // ---------- filters UI ----------
+    for (const kind of ['tram', 'bus', 'regio', 'night', 'train']) {
+      $('f-' + kind).addEventListener('click', () => {
+        filters[kind] = !filters[kind];
+        $('f-' + kind).setAttribute('aria-pressed', String(filters[kind]));
+        applyFilter(); updateLive();
+      });
+    }
+
+    // =====================================================================
+    // Trip planning: LocMatch for search, TripSearch for connections
+    // =====================================================================
+    const trip = { from: null, to: null, opts: [], sel: -1 };
+    let tripLine = null;
+    let armed = null;              // 'from' | 'to' — the field a map tap will fill
+    const pins = { from: null, to: null };
+
+    function setArmed(which) {
+      armed = which;
+      for (const f of ['from', 'to']) {
+        $(f).classList.toggle('armed', f === which);
+        $('pick-' + f).classList.toggle('on', f === which);
+      }
+      $('pickhint').hidden = !which;
+      if (which) $('pickhint').textContent = which === 'from'
+        ? 'Tap the map or a stop to set your start'
+        : 'Tap the map or a stop to set your destination';
+    }
+    function dropPin(which, pos, label) {
+      if (pins[which]) pins[which].setMap(null);
+      pins[which] = new google.maps.Marker({
+        map, position: pos, zIndex: 60, title: label,
+        icon: {
+          path: 'M 0,0 C -6,-9 -9,-13 -9,-17 a 9,9 0 1 1 18,0 c 0,4 -3,8 -9,17 z',
+          fillColor: which === 'from' ? cssv('--ok') : cssv('--accent'), fillOpacity: 1,
+          strokeColor: '#fff', strokeWeight: 2, scale: 1, anchor: new google.maps.Point(0, 0)
+        },
+        label: { text: which === 'from' ? 'A' : 'B', color: '#fff', fontSize: '10px', fontWeight: '700' }
+      });
+      pins[which].getIcon().labelOrigin = new google.maps.Point(0, -17);
+    }
+    // pick a point on the map: label it by the nearest stop when there is one
+    async function pickPoint(which, latLng) {
+      const crd = { x: Math.round(latLng.lng() * 1e6), y: Math.round(latLng.lat() * 1e6) };
+      let name = 'Map point';
+      try {
+        const res = await hafas('LocGeoPos', {
+          ring: { cCrd: crd, maxDist: 350, minDist: 0 }, getStops: true, getPOIs: false, maxLoc: 1
+        });
+        const near = (res.locL || []).find(l => l.type === 'S');
+        if (near) name = 'Near ' + shortStop(near.name);
+      } catch (e) {}
+      trip[which] = { crd, name };
+      $(which).value = name;
+      dropPin(which, latLng, name);
+      setArmed(null);
+      updateClearBtn();
+    }
+    const fmtDur = d => {
+      const t = String(d || '').padStart(6, '0');
+      const h = +t.slice(0, 2), m = +t.slice(2, 4);
+      return h ? h + ' h ' + m + ' min' : m + ' min';
+    };
+    function clearTripLine() { if (tripLine) { tripLine.setMap(null); tripLine = null; } }
+
+    function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+    // The Verbund's search covers all of Austria: "Hauptbahnhof" returns Wien and
+    // Innsbruck before Graz. This app is about Graz, so results are restricted to
+    // the region and ordered by distance from the city.
+    const SEARCH_RADIUS_KM = 40;
+    function kmFromGraz(lat, lon) {
+      const dy = (lat - GRAZ.lat) * 111.32;
+      const dx = (lon - GRAZ.lng) * 111.32 * Math.cos(lat * Math.PI / 180);
+      return Math.hypot(dx, dy);
+    }
+    async function searchLoc(q, box, which) {
+      if (!q || q.length < 2) { box.hidden = true; return; }
+      try {
+        const res = await hafas('LocMatch', { input: { field: 'S', loc: { type: 'ALL', name: q + '?' }, maxLoc: 30 } });
+        const all = ((res.match && res.match.locL) || []).filter(l => l.lid);
+        const near = all
+          .map(l => ({ l, d: l.crd ? kmFromGraz(l.crd.y / 1e6, l.crd.x / 1e6) : Infinity }))
+          .filter(x => x.d <= SEARCH_RADIUS_KM)
+          .sort((a, b) => a.d - b.d)
+          .slice(0, 8);
+        if (!near.length) {
+          box.replaceChildren();
+          const none = document.createElement('div');
+          none.className = 'nores';
+          none.textContent = 'Nothing found near Graz';
+          box.appendChild(none);
+          box.hidden = false;
+          return;
+        }
+        const locs = near.map(x => x.l);
+        box.replaceChildren();
+        if (!locs.length) { box.hidden = true; return; }
+        for (const { l, d } of near) {
+          const row = document.createElement('div');
+          const k = document.createElement('span');
+          k.className = 'k';
+          k.textContent = l.type === 'S' ? 'Stop' : l.type === 'A' ? 'Addr' : 'POI';
+          row.append(k, document.createTextNode(l.name));
+          if (d > 8) {
+            const far = document.createElement('span');
+            far.className = 'dist';
+            far.textContent = Math.round(d) + ' km';
+            row.appendChild(far);
+          }
+          row.addEventListener('mousedown', e => {
+            e.preventDefault();
+            trip[which] = { lid: l.lid, name: l.name };
+            $(which).value = l.name;
+            box.hidden = true;
+            updateClearBtn();
+          });
+          box.appendChild(row);
+        }
+        box.hidden = false;
+      } catch (e) { box.hidden = true; }
+    }
+    const debFrom = debounce(v => searchLoc(v, $('sugg-from'), 'from'), 250);
+    const debTo = debounce(v => searchLoc(v, $('sugg-to'), 'to'), 250);
+    $('from').addEventListener('input', e => { trip.from = null; debFrom(e.target.value.trim()); updateClearBtn(); });
+    $('to').addEventListener('input', e => { trip.to = null; debTo(e.target.value.trim()); updateClearBtn(); });
+    $('from').addEventListener('blur', () => setTimeout(() => { $('sugg-from').hidden = true; }, 120));
+    $('to').addEventListener('blur', () => setTimeout(() => { $('sugg-to').hidden = true; }, 120));
+    $('from').addEventListener('focus', () => setArmed('from'));
+    $('to').addEventListener('focus', () => setArmed('to'));
+
+    // Pin buttons arm map-picking WITHOUT focusing the field, so no keyboard pops up.
+    // preventDefault on pointerdown/mousedown is what stops the focus (and the keyboard).
+    for (const w of ['from', 'to']) {
+      const btn = $('pick-' + w);
+      const keepFocusOff = e => e.preventDefault();
+      btn.addEventListener('pointerdown', keepFocusOff);
+      btn.addEventListener('mousedown', keepFocusOff);
+      btn.addEventListener('click', e => {
+        e.preventDefault(); e.stopPropagation();
+        if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+        const next = (armed === w) ? null : w;
+        setArmed(next);
+        if (next) window.scrollTo(0, 0);     // on mobile, bring the map into view
+      });
+    }
+
+    $('swap').addEventListener('click', () => {
+      const a = trip.from, b = trip.to;
+      trip.from = b; trip.to = a;
+      $('from').value = b ? b.name : ''; $('to').value = a ? a.name : '';
+    });
+
+    $('usegeo').addEventListener('click', () => {
+      if (!navigator.geolocation) return showTripErr('Geolocation is not available in this browser.');
+      $('from').value = 'Locating…';
+      navigator.geolocation.getCurrentPosition(pos => {
+        trip.from = { crd: { x: Math.round(pos.coords.longitude * 1e6), y: Math.round(pos.coords.latitude * 1e6) },
+                      name: 'My location' };
+        $('from').value = 'My location';
+      }, () => { $('from').value = ''; showTripErr('Could not get your location — type a start instead.'); },
+      { enableHighAccuracy: true, timeout: 8000 });
+    });
+
+    function showTripErr(m) { $('triperr').textContent = m; $('triperr').hidden = false; }
+    const locArg = o => o.lid ? { lid: o.lid } : { type: 'C', name: o.name, crd: o.crd };
+
+    async function planTrip() {
+      if (!trip.from || !trip.to) return showTripErr('Pick a start and a destination from the suggestions.');
+      $('triperr').hidden = true;
+      $('go').disabled = true; $('go').textContent = 'Searching…';
+      clearTripLine();
+      try {
+        const res = await hafas('TripSearch', {
+          depLocL: [locArg(trip.from)], arrLocL: [locArg(trip.to)],
+          getPolyline: true, getPasslist: true, maxChg: 3, numF: 5
+        });
+        trip.opts = res.outConL || [];
+        trip.common = res.common || {};
+        renderTrips();
+        updateClearBtn();
+      } catch (e) {
+        showTripErr('No connections found (' + e.message + ').');
+        $('results').replaceChildren();
+      } finally {
+        $('go').disabled = false; $('go').textContent = 'Find connections';
+      }
+    }
+    function updateClearBtn() {
+      const any = trip.from || trip.to || $('from').value || $('to').value || (trip.opts && trip.opts.length);
+      $('clear').hidden = !any;
+    }
+    function clearSearch() {
+      trip.from = null; trip.to = null; trip.opts = []; trip.sel = -1;
+      $('from').value = ''; $('to').value = '';
+      $('sugg-from').hidden = true; $('sugg-to').hidden = true;
+      $('results').replaceChildren();
+      $('triperr').hidden = true;
+      for (const w of ['from', 'to']) if (pins[w]) { pins[w].setMap(null); pins[w] = null; }
+      clearTripLine();
+      setArmed(null);
+      updateClearBtn();
+    }
+    $('clear').addEventListener('click', e => { e.preventDefault(); clearSearch(); });
+    $('go').addEventListener('click', planTrip);
+    $('to').addEventListener('keydown', e => { if (e.key === 'Enter') planTrip(); });
+
+    function renderTrips() {
+      const box = $('results');
+      box.replaceChildren();
+      const locL = trip.common.locL || [], prodL = trip.common.prodL || [];
+      if (!trip.opts.length) { box.appendChild(el('p', 'note', 'No connections found.')); return; }
+
+      trip.opts.forEach((c, idx) => {
+        const card = document.createElement('div');
+        card.className = 'opt';
+
+        const times = document.createElement('div');
+        times.className = 'times';
+        times.append(
+          document.createTextNode(hafasTime(c.dep.dTimeR || c.dep.dTimeS) + ' → ' + hafasTime(c.arr.aTimeR || c.arr.aTimeS)));
+        const dur = document.createElement('span');
+        dur.className = 'dur';
+        dur.textContent = fmtDur(c.dur);
+        times.appendChild(dur);
+        card.appendChild(times);
+
+        // the chain of vehicles: this is the "which vehicles do I take" answer
+        const chain = document.createElement('div');
+        chain.className = 'chain';
+        let first = true;
+        for (const sec of c.secL || []) {
+          if (!first) { const ar = document.createElement('span'); ar.className = 'arrow'; ar.textContent = '›'; chain.appendChild(ar); }
+          if (sec.type === 'JNY') {
+            const prod = prodL[sec.jny.prodX] || {};
+            const b = document.createElement('span');
+            b.className = 'badge';
+            b.style.background = vehColor(kindOf(prod), lineName(prod));
+            b.textContent = lineName(prod);
+            chain.appendChild(b);
+          } else {
+            const w = document.createElement('span');
+            w.className = 'walk';
+            const mins = sec.gis && sec.gis.dur ? Math.round(+String(sec.gis.dur).slice(-4, -2) || 0) : null;
+            w.textContent = '🚶' + (mins ? ' ' + mins + '′' : '');
+            chain.appendChild(w);
+          }
+          first = false;
+        }
+        card.appendChild(chain);
+
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.textContent = (c.chg === 0 ? 'direct' : c.chg + ' change' + (c.chg > 1 ? 's' : ''));
+        card.appendChild(meta);
+
+        // detailed legs, revealed when the option is selected
+        const legs = document.createElement('div');
+        legs.className = 'legs';
+        for (const sec of c.secL || []) {
+          const dn = locL[sec.dep.locX] ? shortStop(locL[sec.dep.locX].name) : '';
+          const an = locL[sec.arr.locX] ? shortStop(locL[sec.arr.locX].name) : '';
+          const row = document.createElement('div');
+          row.className = 'leg';
+          const t = document.createElement('span');
+          const rt = !!sec.dep.dTimeR;
+          t.className = 'lt' + (rt ? ' rt' : '');
+          t.textContent = hafasTime(sec.dep.dTimeR || sec.dep.dTimeS) || '';
+          const txt = document.createElement('span');
+          if (sec.type === 'JNY') {
+            const prod = prodL[sec.jny.prodX] || {};
+            const line = lineName(prod);
+            const b = document.createElement('span');
+            b.className = 'badge';
+            b.style.background = vehColor(kindOf(prod), line);
+            b.textContent = line;
+            txt.append(b, document.createTextNode(' ' + dn + ' → ' + an));
+            const dir = sec.jny.dirTxt ? document.createElement('div') : null;
+            if (dir) { dir.className = 'walk'; dir.textContent = 'Richtung ' + sec.jny.dirTxt; txt.appendChild(dir); }
+          } else {
+            txt.textContent = '🚶 ' + dn + ' → ' + an;
+          }
+          row.append(t, txt);
+          legs.appendChild(row);
+        }
+        card.appendChild(legs);
+
+        card.addEventListener('click', () => selectTrip(idx, card));
+        box.appendChild(card);
+      });
+    }
+
+    function selectTrip(idx, card) {
+      document.querySelectorAll('.opt.sel').forEach(e => e.classList.remove('sel'));
+      card.classList.add('sel');
+      trip.sel = idx;
+      // draw the whole journey on the map
+      clearTripLine();
+      const polyL = trip.common.polyL || [];
+      const path = [];
+      for (const sec of trip.opts[idx].secL || []) {
+        const px = (sec.jny && sec.jny.polyG && sec.jny.polyG.polyXL && sec.jny.polyG.polyXL[0]) ??
+                   (sec.gis && sec.gis.polyG && sec.gis.polyG.polyXL && sec.gis.polyG.polyXL[0]);
+        const poly = (px != null) ? polyL[px] : null;
+        if (poly && poly.crdEncYX) path.push(...decodePath(poly.crdEncYX));
+      }
+      if (path.length && map) {
+        tripLine = new google.maps.Polyline({
+          path, map, strokeColor: cssv('--accent'), strokeOpacity: .9, strokeWeight: 5, zIndex: 2
+        });
+        const b = new google.maps.LatLngBounds();
+        path.forEach(pt => b.extend(pt));
+        map.fitBounds(b, 60);
+      }
+    }
+
+
+    // ---------- theme ----------
+    function isDark() {
+      const t = document.documentElement.dataset.theme;
+      return t ? t === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    try { const s = localStorage.getItem('bm_theme'); if (s) document.documentElement.dataset.theme = s; } catch (e) {}
+    $('themebtn').textContent = isDark() ? '☀️' : '🌙';
+    $('themebtn').addEventListener('click', () => {
+      const next = isDark() ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      try { localStorage.setItem('bm_theme', next); } catch (e) {}
+      $('themebtn').textContent = next === 'dark' ? '☀️' : '🌙';
+      rebuildMap();
+    });
+
+    // ---------- panel + boot ----------
+    function togglePanel(hide) {
+      const c = map && map.getCenter();
+      document.body.classList.toggle('panel-hidden', hide);
+      if (hide) window.scrollTo(0, 0);
+      // the map container changes size — recentre once the transition has settled
+      if (c) setTimeout(() => { if (map) map.setCenter(c); }, 320);
+    }
+    $('panelhide').addEventListener('click', () => togglePanel(true));
+
+    $('panelshow').addEventListener('click', () => togglePanel(false));
+
+    // ---- bottom sheet: peek <-> expanded, dragged by the handle ----
+    // Collapsing leaves a 52px stub visible, so the gesture always has a home of
+    // its own and never competes with the map's pan surface.
+    const isMobile = () => window.matchMedia('(max-width: 44rem)').matches;
+    function setPeek(on) {
+      const c = map && map.getCenter();
+      document.body.classList.toggle('panel-peek', on);
+      document.body.classList.remove('panel-hidden');
+      if (on) window.scrollTo(0, 0);
+      updatePeek();
+      if (c) setTimeout(() => { if (map) map.setCenter(c); }, 320);
+    }
+    function updatePeek() {
+      const n = [...vehicles.values()].filter(v => filters[v.kind]).length;
+      const where = trip.from || trip.to ? 'tap to finish planning' : 'tap to plan a trip';
+      $('peek').textContent = n ? n + ' vehicles moving · ' + where : where;
+    }
+
+    (() => {
+      const grab = $('grabber'), sheet = document.querySelector('main');
+      let startY = 0, dy = 0, dragging = false, moved = false, wasPeek = false;
+      const THRESHOLD = 60;
+
+      grab.addEventListener('pointerdown', e => {
+        if (!isMobile()) return;
+        dragging = true; moved = false; startY = e.clientY; dy = 0;
+        wasPeek = document.body.classList.contains('panel-peek');
+        sheet.style.transition = 'none';
+        try { grab.setPointerCapture(e.pointerId); } catch (err) {}
+      });
+      grab.addEventListener('pointermove', e => {
+        if (!dragging) return;
+        dy = e.clientY - startY;
+        if (Math.abs(dy) > 4) moved = true;
+        // expanded: drag down only. peeking: drag up only.
+        const d = wasPeek ? Math.min(0, dy) : Math.max(0, dy);
+        const base = wasPeek ? 'calc(100% - 58px - env(safe-area-inset-bottom, 0px))' : '0px';
+        sheet.style.transform = 'translateY(' + base + ') translateY(' + (d * 0.9) + 'px)';
+        e.preventDefault();
+      });
+      const finish = e => {
+        if (!dragging) return;
+        dragging = false;
+        sheet.style.transition = '';
+        sheet.style.transform = '';
+        if (!moved) setPeek(!wasPeek);                    // plain tap toggles
+        else if (wasPeek && dy < -THRESHOLD) setPeek(false);   // dragged up -> expand
+        else if (!wasPeek && dy > THRESHOLD) setPeek(true);    // dragged down -> peek
+        try { grab.releasePointerCapture(e.pointerId); } catch (err) {}
+      };
+      grab.addEventListener('pointerup', finish);
+      grab.addEventListener('pointercancel', finish);
+    })();
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { clearInterval(pollTimer); pollTimer = null; }
+      else if (map && !pollTimer) { poll(); pollTimer = setInterval(poll, 7000); }
+    });
+    ensureMaps();
+  })();
+  </script>
+</body>
+</html>
