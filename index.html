@@ -100,7 +100,8 @@
     }
     .vchip:hover { border-color: var(--accent); }
     .vchip[aria-pressed="false"] { opacity: .38; }
-    .vchip i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .vchip .vic { display: inline-flex; align-items: center; width: 22px; height: 12px; }
+    .vchip .vic svg { width: 22px; height: 12px; display: block; }
     .vchip b { font-variant-numeric: tabular-nums; font-weight: 650; }
     .vchip .hbadge {
       width: 13px; height: 13px; border-radius: 4px; background: #5b6472; color: #fff;
@@ -130,6 +131,7 @@
     .sugg div:hover, .sugg div.on { background: color-mix(in srgb, var(--accent) 16%, transparent); }
     .sugg .k { color: var(--muted); font-size: .72rem; margin-right: .35rem; }
     .sugg .dist { color: var(--muted); font-size: .72rem; margin-left: .4rem; }
+    .sugg .sub2 { color: var(--ink-3); font-size: .74rem; }
     .sugg .nores { color: var(--muted); font-size: .82rem; cursor: default; }
     .gorow { display: flex; gap: .4rem; }
     .clr { width: 46px; flex: none; border: 1px solid var(--line); border-radius: 11px;
@@ -156,19 +158,48 @@
     .leg .lt.rt { color: #3fbf5f; font-weight: 650; }
 
     .note { color: var(--muted); font-size: .78rem; line-height: 1.5; }
+    /* fixed height: this line changes text often, and the sheet is bottom-anchored */
+    #livetxt { min-height: 2.4em; margin: .5rem 0 0; }
     .err { color: var(--tram); font-size: .82rem; margin-top: .6rem; }
     hr { border: 0; border-top: 1px solid var(--line); margin: .9rem 0; }
-    .gm-style .gm-style-iw-d { font: .85rem/1.5 system-ui, sans-serif; }
+    /* Google's info bubble is always white, but its content inherits our --fg,
+       which is near-white in dark mode. So the popup paints its OWN surface and
+       sets every text colour explicitly — readable whatever Google does. */
+    .gm-style .gm-style-iw-d { font: .85rem/1.5 system-ui, sans-serif; overflow: hidden !important; }
+    .gm-style .gm-style-iw-c, .gm-style .gm-style-iw-d { background: var(--card) !important; }
+    .gm-style .gm-style-iw-tc::after { background: var(--card); }
+    .gm-style .gm-style-iw-c { box-shadow: 0 4px 20px rgba(0,0,0,.35); }
+    .gm-style .gm-style-iw button.gm-ui-hover-effect > span { background-color: var(--muted) !important; }
+    .iw {
+      background: var(--card); color: var(--fg);
+      margin: -10px -14px; padding: 10px 14px 12px; border-radius: 8px;
+    }
+    .iw .canon, .iw b { color: var(--fg); }
+    .iw .route { color: var(--ink-2); }
+    .iw .dirn, .iw .next { color: var(--muted); }
+    .iw .stops { border-top-color: var(--line) !important; }
+    .iw .strow { color: var(--fg); }
+    .iw .tm { color: var(--muted); }
+    .iw .tm.rt { color: var(--ok); }
     .iw b { display: block; font-size: 1rem; margin-bottom: .1rem; }
     .iw .ln { display: inline-block; color: #fff; font-weight: 700; border-radius: 6px;
       padding: 0 .4rem; margin-right: .35rem; }
     .iw .canon { font-weight: 650; margin-top: .1rem; }
-    .iw .route { color: #444; font-size: .85rem; margin-top: .1rem; }
-    .iw .dirn, .iw .next { color: #666; font-size: .82rem; }
-    .iw .stops { margin-top: .45rem; border-top: 1px solid #ddd; padding-top: .35rem; }
+    .iw .route { color: var(--ink-2); font-size: .85rem; margin-top: .1rem; }
+    .iw .dirn, .iw .next { font-size: .82rem; }
+    .iw .dchip { display: inline-block; margin-top: .35rem; font-size: .78rem; font-weight: 700;
+      border-radius: 999px; padding: .05rem .5rem; }
+    .iw .dchip.ok   { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+    .iw .dchip.warn { background: color-mix(in srgb, #d99400 20%, transparent); color: #d99400; }
+    .iw .dchip.bad  { background: color-mix(in srgb, var(--tram) 18%, transparent); color: var(--tram); }
+    .iw .attr { font-size: .8rem; color: var(--bus); margin-top: .3rem; }
+    .iw .warnmsg { font-size: .78rem; color: #d99400;
+      background: color-mix(in srgb, #d99400 12%, transparent);
+      border-radius: 8px; padding: .3rem .45rem; margin-top: .3rem; }
+    .iw .stops { margin-top: .45rem; border-top: 1px solid var(--line); padding-top: .35rem; }
     .iw .strow { display: flex; gap: .5rem; font-size: .82rem; }
-    .iw .tm { font-variant-numeric: tabular-nums; color: #666; min-width: 2.8em; }
-    .iw .tm.rt { color: #0a7d28; font-weight: 650; }
+    .iw .tm { font-variant-numeric: tabular-nums; min-width: 2.8em; }
+    .iw .tm.rt { font-weight: 650; }
 
     /* mobile: the panel is a bottom sheet that slides DOWN, so the chevron points down.
        This must come after the base rule above — equal specificity, last one wins. */
@@ -176,10 +207,12 @@
       /* a bottom sheet collapses with a grab handle, not a chevron */
       #panelhide { display: none; }
       .grabber {
-        display: block; width: 100%; height: 46px; padding: 0; margin: -.6rem 0 .1rem;
+        display: block; width: 100%; height: 24px; padding: 0; margin: -.45rem 0 -.1rem;
         background: transparent; border: 0; cursor: pointer; position: relative;
         -webkit-tap-highlight-color: transparent; touch-action: none;
       }
+      /* only the collapsed stub needs room for the summary line */
+      body.panel-peek .grabber { height: 46px; }
       .grabber::before {
         content: ""; position: absolute; left: 50%; top: 8px; transform: translateX(-50%);
         width: 46px; height: 5px; border-radius: 999px; background: var(--line);
@@ -221,11 +254,11 @@
     </header>
 
     <div class="chiprow" id="chiprow" role="group" aria-label="Show on map">
-      <button class="vchip" id="f-tram" aria-pressed="true" title="Bims"><i style="background:var(--tram)"></i><b id="ct-tram">0</b></button>
-      <button class="vchip" id="f-bus" aria-pressed="true" title="Stadtbus"><i style="background:var(--bus)"></i><b id="ct-bus">0</b></button>
-      <button class="vchip" id="f-regio" aria-pressed="true" title="RegioBus"><i style="background:var(--regio)"></i><b id="ct-regio">0</b></button>
-      <button class="vchip" id="f-night" aria-pressed="true" title="Nachtlinien"><i style="background:var(--night)"></i><b id="ct-night">0</b></button>
-      <button class="vchip" id="f-train" aria-pressed="false" title="Züge"><i style="background:var(--train)"></i><b id="ct-train">0</b></button>
+      <button class="vchip" id="f-tram" aria-pressed="true" title="Bims — each line in its own colour"><i class="vic" data-kind="tram"></i><b id="ct-tram">0</b></button>
+      <button class="vchip" id="f-bus" aria-pressed="true" title="Stadtbus"><i class="vic" data-kind="bus"></i><b id="ct-bus">0</b></button>
+      <button class="vchip" id="f-regio" aria-pressed="true" title="RegioBus, Fernbus, Sammeltaxi"><i class="vic" data-kind="regio"></i><b id="ct-regio">0</b></button>
+      <button class="vchip" id="f-night" aria-pressed="true" title="Nachtlinien"><i class="vic" data-kind="night"></i><b id="ct-night">0</b></button>
+      <button class="vchip" id="f-train" aria-pressed="false" title="Züge, S-Bahn"><i class="vic" data-kind="train"></i><b id="ct-train">0</b></button>
       <button class="vchip stop" id="f-stops" aria-pressed="true" title="Haltestellen"><i class="hbadge">H</i><b id="ct-stops">–</b></button>
       <span class="livedot" id="live" title="live feed"><span class="pulse"></span></span>
     </div>
@@ -396,8 +429,9 @@
     function rebuildMap() {
       if (!map) return;
       const c = map.getCenter(), z = map.getZoom();
-      for (const v of vehicles.values()) { v.marker.setMap(null); if (v.tag) v.tag.setMap(null); }
-      vehicles.clear();
+      // Do NOT drop the vehicles: emptying them makes every count fall to 0, the
+      // status line rewraps, and a bottom-anchored sheet resizes from the top —
+      // which reads as the panel jumping. Markers are re-parented instead.
       clearStops(); clearRoute(); clearTripLine();
       lastStopKey = '';
       const opts = mapOptions();
@@ -410,6 +444,13 @@
         info.close(); clearRoute();
       });
       map.addListener('idle', () => { poll(); loadStops(); });
+      // move the existing vehicles onto the new map instance, restyled for the theme
+      for (const v of vehicles.values()) {
+        v.marker.setIcon(vIcon(v.kind, v.head, v.line));
+        v.marker.setMap(map);
+        if (v.tag) { v.tag.setLabel(tagLabel(v.line)); v.tag.setMap(map); }
+      }
+      for (const w of ['from', 'to']) if (pins[w]) pins[w].setMap(map);
       poll(); loadStops();
     }
 
@@ -618,6 +659,29 @@
       return s.slice(0, 2) + ':' + s.slice(2, 4);
     }
     const shortStop = n => (n || '').replace(/^Graz /, '');
+    // HAFAS times are [dd]HHMMSS; compare the live prognosis against the schedule
+    function hafasMins(t) {
+      if (!t) return null;
+      const str = String(t);
+      const dd = str.length === 8 ? +str.slice(0, 2) : 0;
+      const b = str.length === 8 ? str.slice(2) : str;
+      return dd * 1440 + (+b.slice(0, 2)) * 60 + (+b.slice(2, 4));
+    }
+    function delayOf(st) {
+      if (!st) return null;
+      const sched = hafasMins(st.dTimeS || st.aTimeS);
+      const live = hafasMins(st.dTimeR || st.aTimeR);
+      if (sched == null || live == null) return null;
+      let d = live - sched;
+      if (d > 720) d -= 1440;
+      if (d < -720) d += 1440;
+      return d;
+    }
+    function delayText(d) {
+      if (d == null) return null;
+      if (d <= 1 && d >= -1) return 'p\u00fcnktlich';
+      return (d > 0 ? '+' : '') + d + ' min';
+    }
 
     function ingest(res) {
       const prodL = (res.common && res.common.prodL) || [];
@@ -646,7 +710,9 @@
         const nextStop = nextIdx >= 0 ? nameAt(nextIdx) : '';
         const nextTime = nextIdx >= 0 && st[nextIdx]
           ? hafasTime(st[nextIdx].aTimeR || st[nextIdx].aTimeS || st[nextIdx].dTimeR || st[nextIdx].dTimeS) : null;
-        const meta = { kindName, origin: nameAt(0), dest: nameAt(st.length - 1), nextStop, nextTime, jid };
+        let delay = nextIdx >= 0 ? delayOf(st[nextIdx]) : null;
+        if (delay == null) for (const x of st) { const d = delayOf(x); if (d != null) { delay = d; break; } }
+        const meta = { kindName, origin: nameAt(0), dest: nameAt(st.length - 1), nextStop, nextTime, jid, delay };
         let v = vehicles.get(jid);
         if (!v) {
           v = { kind, line, dir, from: to, to, t0: now, dur: 0, head: 0, ...meta };
@@ -667,15 +733,56 @@
       for (const [jid, v] of vehicles) {
         if (!seen.has(jid)) { v.marker.setMap(null); if (v.tag) v.tag.setMap(null); vehicles.delete(jid); }
       }
+      deoverlap();
       for (const k of ['tram', 'bus', 'regio', 'night', 'train']) $('ct-' + k).textContent = counts[k];
       applyFilter();
     }
 
+    // Vehicles laying over at a terminus are often reported within a few metres of
+    // each other (16, 67E and 31E sat 10 m apart at Jakominiplatz). Drawn as-is they
+    // stack and only the top one is visible — so anything closer than SEP metres is
+    // fanned out into a small ring. Distance-based, because a coordinate grid puts
+    // near-identical points into neighbouring cells and misses exactly these cases.
+    const SEP_M = 12;                     // only near-coincident vehicles
+    function metresBetween(a, b) {
+      const dy = (a.lat - b.lat) * 111320;
+      const dx = (a.lng - b.lng) * 111320 * Math.cos(a.lat * Math.PI / 180);
+      return Math.hypot(dx, dy);
+    }
+    function deoverlap() {
+      const list = [...vehicles.values()];
+      for (const v of list) v.off = null;
+      const taken = new Set();
+      for (let i = 0; i < list.length; i++) {
+        if (taken.has(i)) continue;
+        const group = [list[i]];
+        taken.add(i);
+        for (let j = i + 1; j < list.length; j++) {
+          if (taken.has(j)) continue;
+          if (metresBetween(list[i].to, list[j].to) < SEP_M) { group.push(list[j]); taken.add(j); }
+        }
+        if (group.length < 2) continue;
+        group.sort((a, b) => String(a.line).localeCompare(String(b.line)));  // stable across polls
+        const R = 0.00009;                                                   // ~10 m ring
+        group.forEach((v, k) => {
+          const ang = (k / group.length) * Math.PI * 2 - Math.PI / 2;
+          v.off = {
+            lat: Math.cos(ang) * R,
+            lng: Math.sin(ang) * R / Math.max(0.2, Math.cos(v.to.lat * Math.PI / 180))
+          };
+        });
+      }
+    }
+
     const lerp = (a, b, t) => a + (b - a) * t;
     function curPos(v, now) {
-      if (!v.dur) return v.to;
-      const t = Math.min(1, (now - v.t0) / v.dur);
-      return { lat: lerp(v.from.lat, v.to.lat, t), lng: lerp(v.from.lng, v.to.lng, t) };
+      let p;
+      if (!v.dur) p = v.to;
+      else {
+        const t = Math.min(1, (now - v.t0) / v.dur);
+        p = { lat: lerp(v.from.lat, v.to.lat, t), lng: lerp(v.from.lng, v.to.lng, t) };
+      }
+      return v.off ? { lat: p.lat + v.off.lat, lng: p.lng + v.off.lng } : p;
     }
     function animate() {
       const now = Date.now();
@@ -735,7 +842,7 @@
     let routeLine = null;
     function clearRoute() { if (routeLine) { routeLine.setMap(null); routeLine = null; } }
 
-    async function drawRoute(v, box) {
+    async function drawRoute(v, box, extras) {
       try {
         const res = await hafas('JourneyDetails', { jid: v.jid, getPolyline: true, getPasslist: true });
         const poly = res.common && res.common.polyL && res.common.polyL[0];
@@ -745,6 +852,24 @@
             path: decodePath(poly.crdEncYX), map,
             strokeColor: KIND_COLOR[v.kind](), strokeOpacity: 0.75, strokeWeight: 4, zIndex: 1
           });
+        }
+        if (extras) {
+          const remL = (res.common && res.common.remL) || [];
+          if (remL.some(r => /niederflur/i.test(r.txtN || r.txtS || '') || r.code === 'OB')) {
+            const at = document.createElement('div');
+            at.className = 'attr';
+            at.textContent = '\u267f Niederflurfahrzeug';
+            extras.appendChild(at);
+          }
+          for (const m of ((res.common && res.common.himL) || []).slice(0, 2)) {
+            const w = document.createElement('div');
+            w.className = 'warnmsg';
+            const head = (m.head || '').replace(/<[^>]*>/g, '').trim();
+            const txt = (m.text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+            w.textContent = '\u26a0 ' + (head || txt).slice(0, 130);
+            if (head && txt) w.title = txt;
+            extras.appendChild(w);
+          }
         }
         // remaining stops with times, straight from the live journey
         const locL = (res.common && res.common.locL) || [];
@@ -811,9 +936,20 @@
         box.appendChild(nx);
       }
 
+      const dtxt = delayText(v.delay);
+      if (dtxt) {
+        const chip = document.createElement('span');
+        chip.className = 'dchip ' + (v.delay > 4 ? 'bad' : v.delay > 1 ? 'warn' : 'ok');
+        chip.textContent = dtxt;
+        box.appendChild(chip);
+      }
+      const extras = document.createElement('div');
+      extras.className = 'extras';
+      box.appendChild(extras);
+
       info.setContent(box);
       info.open({ map, anchor: v.marker });
-      drawRoute(v, box);
+      drawRoute(v, box, extras);
     }
     function showErr(msg) { $('err').textContent = msg; $('err').hidden = false; }
 
@@ -822,6 +958,41 @@
       $('f-stops').setAttribute('aria-pressed', String(stopsOn));
       if (!stopsOn) { clearStops(); lastStopKey = ''; } else loadStops();
     });
+
+    // Chip glyphs are the SAME silhouettes drawn on the map, laid on their side.
+    // Bims get a gradient of the real line colours, because a single swatch would
+    // misrepresent a network where every line has its own colour.
+    function paintChips() {
+      const NS2 = 'http://www.w3.org/2000/svg';
+      for (const el of document.querySelectorAll('.vic')) {
+        const kind = el.dataset.kind;
+        const shape = kind === 'tram' ? MODEL.tram : kind === 'train' ? MODEL.train : MODEL.bus;
+        const svg = document.createElementNS(NS2, 'svg');
+        svg.setAttribute('viewBox', '-20 -8 40 16');
+        if (kind === 'tram') {
+          const defs = document.createElementNS(NS2, 'defs');
+          const g = document.createElementNS(NS2, 'linearGradient');
+          g.setAttribute('id', 'bimgrad');
+          g.setAttribute('x1', '0'); g.setAttribute('x2', '1'); g.setAttribute('y1', '0'); g.setAttribute('y2', '0');
+          [['0%', LINE_COLOR['1']], ['34%', LINE_COLOR['3']], ['62%', LINE_COLOR['4']], ['100%', LINE_COLOR['7']]]
+            .forEach(([o, c]) => {
+              const st = document.createElementNS(NS2, 'stop');
+              st.setAttribute('offset', o); st.setAttribute('stop-color', c);
+              g.appendChild(st);
+            });
+          defs.appendChild(g); svg.appendChild(defs);
+        }
+        const path = document.createElementNS(NS2, 'path');
+        path.setAttribute('d', shape);
+        path.setAttribute('transform', 'rotate(90)');
+        path.setAttribute('fill', kind === 'tram' ? 'url(#bimgrad)' : KIND_COLOR[kind]());
+        path.setAttribute('stroke', cssv('--card'));
+        path.setAttribute('stroke-width', '1.4');
+        svg.appendChild(path);
+        el.replaceChildren(svg);
+      }
+    }
+    paintChips();
 
     // ---------- filters UI ----------
     for (const kind of ['tram', 'bus', 'regio', 'night', 'train']) {
@@ -899,51 +1070,116 @@
       const dx = (lon - GRAZ.lng) * 111.32 * Math.cos(lat * Math.PI / 180);
       return Math.hypot(dx, dy);
     }
-    async function searchLoc(q, box, which) {
-      if (!q || q.length < 2) { box.hidden = true; return; }
+    // Transit search alone can't find "my doctor": HAFAS has stops, addresses and a
+    // few POI categories, but no Ordinationen. Photon (Komoot's OSM geocoder, free
+    // and CORS-open) fills that in. Results from both are merged and ranked by
+    // distance from Graz.
+    const POI_LABEL = {
+      doctors: 'Arzt', dentist: 'Zahnarzt', pharmacy: 'Apotheke', hospital: 'Klinik',
+      clinic: 'Klinik', veterinary: 'Tierarzt', restaurant: 'Restaurant', cafe: 'Café',
+      bar: 'Bar', fast_food: 'Imbiss', supermarket: 'Supermarkt', school: 'Schule',
+      university: 'Uni', kindergarten: 'Kindergarten', bank: 'Bank', post_office: 'Post',
+      cinema: 'Kino', theatre: 'Theater', museum: 'Museum', hotel: 'Hotel',
+      sports_centre: 'Sport', swimming_pool: 'Bad', townhall: 'Amt', place_of_worship: 'Kirche'
+    };
+    async function searchHafas(q) {
       try {
         const res = await hafas('LocMatch', { input: { field: 'S', loc: { type: 'ALL', name: q + '?' }, maxLoc: 30 } });
-        const all = ((res.match && res.match.locL) || []).filter(l => l.lid);
-        const near = all
-          .map(l => ({ l, d: l.crd ? kmFromGraz(l.crd.y / 1e6, l.crd.x / 1e6) : Infinity }))
-          .filter(x => x.d <= SEARCH_RADIUS_KM)
-          .sort((a, b) => a.d - b.d)
-          .slice(0, 8);
-        if (!near.length) {
-          box.replaceChildren();
-          const none = document.createElement('div');
-          none.className = 'nores';
-          none.textContent = 'Nothing found near Graz';
-          box.appendChild(none);
-          box.hidden = false;
-          return;
-        }
-        const locs = near.map(x => x.l);
-        box.replaceChildren();
-        if (!locs.length) { box.hidden = true; return; }
-        for (const { l, d } of near) {
-          const row = document.createElement('div');
-          const k = document.createElement('span');
-          k.className = 'k';
-          k.textContent = l.type === 'S' ? 'Stop' : l.type === 'A' ? 'Addr' : 'POI';
-          row.append(k, document.createTextNode(l.name));
-          if (d > 8) {
-            const far = document.createElement('span');
-            far.className = 'dist';
-            far.textContent = Math.round(d) + ' km';
-            row.appendChild(far);
-          }
-          row.addEventListener('mousedown', e => {
-            e.preventDefault();
-            trip[which] = { lid: l.lid, name: l.name };
-            $(which).value = l.name;
-            box.hidden = true;
-            updateClearBtn();
+        return ((res.match && res.match.locL) || []).filter(l => l.lid && l.crd).map(l => ({
+          name: l.name,
+          sub: '',
+          kind: l.type === 'S' ? 'Stop' : l.type === 'A' ? 'Adresse' : 'POI',
+          isStop: l.type === 'S',
+          lid: l.lid,
+          lat: l.crd.y / 1e6, lon: l.crd.x / 1e6
+        }));
+      } catch (e) { return []; }
+    }
+    async function searchPhoton(q) {
+      try {
+        const url = 'https://photon.komoot.io/api?q=' + encodeURIComponent(q) +
+          '&lat=' + GRAZ.lat + '&lon=' + GRAZ.lng + '&limit=15&lang=de';
+        const r = await fetch(url);
+        if (!r.ok) return [];
+        const d = await r.json();
+        return (d.features || [])
+          .filter(f => f.properties && f.properties.name && f.geometry)
+          .filter(f => f.properties.osm_key !== 'highway')   // roads/footways aren't destinations
+          .map(f => {
+            const p = f.properties, c = f.geometry.coordinates;
+            const bits = [p.street, p.housenumber].filter(Boolean).join(' ');
+            const named = ['amenity', 'shop', 'healthcare', 'office', 'tourism', 'leisure'];
+            const kind = POI_LABEL[p.osm_value]
+              || (named.includes(p.osm_key) ? p.osm_value : 'Ort');
+            return {
+              name: p.name,
+              sub: [bits, p.city || p.district].filter(Boolean).join(', '),
+              kind: kind,
+              isStop: false,
+              lat: c[1], lon: c[0]
+            };
           });
-          box.appendChild(row);
-        }
+      } catch (e) { return []; }
+    }
+
+    async function searchLoc(q, box, which) {
+      if (!q || q.length < 2) { box.hidden = true; return; }
+      const [a, b] = await Promise.all([searchHafas(q), searchPhoton(q)]);
+      const seen = new Set();
+      const near = [...a, ...b]
+        .map(x => ({ ...x, d: kmFromGraz(x.lat, x.lon) }))
+        .filter(x => x.d <= SEARCH_RADIUS_KM)
+        .filter(x => {                                  // drop near-identical duplicates
+          const key = x.name.toLowerCase().replace(/^graz /, '') + '@' +
+                      x.lat.toFixed(3) + ',' + x.lon.toFixed(3);
+          if (seen.has(key)) return false;
+          seen.add(key); return true;
+        })
+        // stops get a 1.5 km head start: for a stop-name query the stop should lead
+        .sort((x, y) => (x.d - (x.isStop ? 1.5 : 0)) - (y.d - (y.isStop ? 1.5 : 0)))
+        .slice(0, 9);
+
+      box.replaceChildren();
+      if (!near.length) {
+        const none = document.createElement('div');
+        none.className = 'nores';
+        none.textContent = 'Nothing found near Graz';
+        box.appendChild(none);
         box.hidden = false;
-      } catch (e) { box.hidden = true; }
+        return;
+      }
+      for (const item of near) {
+        const row = document.createElement('div');
+        const k = document.createElement('span');
+        k.className = 'k';
+        k.textContent = item.kind;
+        row.append(k, document.createTextNode(item.name));
+        if (item.sub) {
+          const sub = document.createElement('span');
+          sub.className = 'sub2';
+          sub.textContent = ' · ' + item.sub;
+          row.appendChild(sub);
+        }
+        if (item.d > 8) {
+          const far = document.createElement('span');
+          far.className = 'dist';
+          far.textContent = Math.round(item.d) + ' km';
+          row.appendChild(far);
+        }
+        row.addEventListener('mousedown', e => {
+          e.preventDefault();
+          // stops carry a HAFAS id (exact routing); places go in as coordinates
+          trip[which] = item.lid
+            ? { lid: item.lid, name: item.name }
+            : { crd: { x: Math.round(item.lon * 1e6), y: Math.round(item.lat * 1e6) }, name: item.name };
+          $(which).value = item.name;
+          box.hidden = true;
+          if (map) dropPin(which, new google.maps.LatLng(item.lat, item.lon), item.name);
+          updateClearBtn();
+        });
+        box.appendChild(row);
+      }
+      box.hidden = false;
     }
     const debFrom = debounce(v => searchLoc(v, $('sugg-from'), 'from'), 250);
     const debTo = debounce(v => searchLoc(v, $('sugg-to'), 'to'), 250);
@@ -1152,6 +1388,7 @@
       document.documentElement.dataset.theme = next;
       try { localStorage.setItem('bm_theme', next); } catch (e) {}
       $('themebtn').textContent = next === 'dark' ? '☀️' : '🌙';
+      paintChips();
       rebuildMap();
     });
 
@@ -1224,6 +1461,13 @@
       if (document.hidden) { clearInterval(pollTimer); pollTimer = null; }
       else if (map && !pollTimer) { poll(); pollTimer = setInterval(poll, 7000); }
     });
+    // Open on the map, not on the panel: on phones the sheet starts collapsed to its
+    // peek stub. Desktop keeps it open — there it sits beside the map, not over it.
+    if (window.matchMedia('(max-width: 44rem)').matches) {
+      document.body.classList.add('panel-peek');
+      updatePeek();
+    }
+
     ensureMaps();
   })();
   </script>
