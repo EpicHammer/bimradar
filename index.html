@@ -420,6 +420,10 @@
       map.addListener('idle', () => { poll(); loadStops(); });
       map.addListener('zoom_changed', () => {
         for (const m of stops.values()) m.setIcon(stopIcon(m.__tram));
+        for (const v of vehicles.values()) {
+          v.marker.setIcon(vIcon(v.kind, v.head, v.line));
+          if (v.tag) v.tag.setIcon(tagIcon());
+        }
       });
       poll();
       if (!pollTimer) pollTimer = setInterval(poll, 7000);
@@ -463,19 +467,23 @@
       // longest, blunt front
       train: 'M 0,-18 L 4.6,-13 L 4.6,14 Q 4.6,16.5 2.3,16.5 L -2.3,16.5 Q -4.6,16.5 -4.6,14 L -4.6,-13 Z'
     };
+    function vehScale() {
+      const z = map ? map.getZoom() : 13;
+      return z >= 17 ? 1.7 : z >= 16 ? 1.45 : z >= 15 ? 1.2 : z >= 13 ? 1 : 0.8;
+    }
     function vIcon(kind, head, line) {
       return {
         path: MODEL[kind === 'tram' ? 'tram' : kind === 'train' ? 'train' : 'bus'],
         fillColor: vehColor(kind, line), fillOpacity: 1,
         strokeColor: '#ffffff', strokeWeight: 1.8,
-        rotation: head || 0, scale: 1,
+        rotation: head || 0, scale: vehScale(),
         anchor: new google.maps.Point(0, 0)
       };
     }
     // the line number rides in a second, unrotated marker just below the model
     function tagIcon() {
       return { path: 'M 0,0 L 0,0', scale: 1, strokeOpacity: 0, fillOpacity: 0,
-               labelOrigin: new google.maps.Point(0, 23) };
+               labelOrigin: new google.maps.Point(0, 16 + 14 * vehScale()) };
     }
     function tagLabel(line) {
       return { text: line, color: cssv('--fg'), fontSize: '11px', fontWeight: '700' };
@@ -483,11 +491,11 @@
     function makeMarker(v) {
       const body = new google.maps.Marker({
         map, position: v.to, icon: vIcon(v.kind, v.head, v.line),
-        zIndex: v.kind === 'tram' ? 30 : 20
+        zIndex: v.kind === 'tram' ? 30 : 20, optimized: false
       });
       const tag = new google.maps.Marker({
         map, position: v.to, icon: tagIcon(), label: tagLabel(v.line),
-        zIndex: v.kind === 'tram' ? 31 : 21, clickable: false
+        zIndex: v.kind === 'tram' ? 31 : 21, clickable: false, optimized: false
       });
       v.tag = tag;
       return body;
@@ -635,7 +643,7 @@
         if (!b) { inFlight = false; return; }
         const sw = b.getSouthWest(), ne = b.getNorthEast();
         const res = await hafas('JourneyGeoPos', {
-          maxJny: 220, onlyRT: false,
+          maxJny: 400, onlyRT: false,
           rect: {
             llCrd: { x: Math.round(sw.lng() * 1e6), y: Math.round(sw.lat() * 1e6) },
             urCrd: { x: Math.round(ne.lng() * 1e6), y: Math.round(ne.lat() * 1e6) }
