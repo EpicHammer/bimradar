@@ -626,7 +626,8 @@
       82226336,                                                    // Stadthalle Graz
       29983017, 29983018,                                          // TU Alte Technik member ways
       4399927, 8143951,                                            // Uni Graz Hauptgebäude member ways
-      75042781                                                     // TU Neue Technik
+      75042781,                                                    // TU Neue Technik
+      1039587147, 171711442, 1039587145                             // Anton Paar HQ + production hall (+ hall courtyard)
       // NB: CARTO renders the Burg relation itself as feature id 67773 — that id is
       // PROVABLY reused for unrelated buildings in other tiles, so it must NOT be
       // hidden; the model encloses that extrusion instead (same footprint, taller).
@@ -1439,6 +1440,41 @@
             ntg.position.set((mcNt.x - T.x) / T.scale, 0, (mcNt.y - T.y) / T.scale);
             scene.add(ntg);
 
+            // ---- Anton Paar headquarters (Straßgang) ----
+            // ~5 km SW. The instrument maker's campus: a long glass office bar
+            // (dark plinth, mullioned glass, white fascia with the brand's RED
+            // accent line) beside the low production hall with its courtyard.
+            const AP_HQ = [[-50.8,7.4],[-27.9,8.1],[-19.2,8.1],[13.9,8.1],[21.6,7.9],[51.0,8.2],[50.8,-4.9],[45.3,-4.9],[-19.2,-5.1],[-23.2,-5.1],[-27.2,-5.2],[-27.1,-8.3],[-51.0,-8.3]];
+            const AP_HALL = [[-84.5,137.6],[-80.4,57.2],[-19.4,61.3],[-20.8,84.1],[-23.1,120.7],[-13.2,121.2],[-13.8,140.7]];
+            const AP_HALL_H = [[-51.9,109.1],[-42.8,109.6],[-42.3,95.1],[-51.5,94.8]];
+            const apr = new THREE.Group();
+            const apPl = extrudeFoot(scalePoly(AP_HQ, 0.96), 4, 0x3a4348, 0.68, 0.35);
+            apr.add(apPl);                                                          // recessed dark plinth
+            const apGl = extrudeFoot(AP_HQ, 17, 0x8fa7b0, 0.78, 0.3);
+            apGl.position.y = 4; apr.add(apGl);                                     // glass body 4->21
+            [8.5, 13, 17.5].forEach(y => {
+              const band = extrudeFoot(scalePoly(AP_HQ, 1.005), 0.6, 0x6d838c, 0.7, 0.3);
+              band.position.y = y; apr.add(band);
+            });
+            const apFas = extrudeFoot(scalePoly(AP_HQ, 1.03), 1.6, 0xf0f2f3, 0.84, 0.26);
+            apFas.position.y = 21; apr.add(apFas);                                  // white fascia
+            const apRed = extrudeFoot(scalePoly(AP_HQ, 1.03), 0.5, 0xc22127, 0.85, 0.2);
+            apRed.position.y = 22.6; apr.add(apRed);                                // the red line
+            (function () {                                                          // production hall + courtyard
+              const sh = new THREE.Shape();
+              AP_HALL.forEach((p, i) => i ? sh.lineTo(p[0], p[1]) : sh.moveTo(p[0], p[1]));
+              sh.closePath();
+              const hh = new THREE.Path();
+              AP_HALL_H.forEach((p, i) => i ? hh.lineTo(p[0], p[1]) : hh.moveTo(p[0], p[1]));
+              hh.closePath(); sh.holes.push(hh);
+              const hg = new THREE.ExtrudeGeometry(sh, { depth: 7.5, bevelEnabled: false });
+              hg.rotateX(-Math.PI / 2);
+              apr.add(facet(hg, 0xd8dbda, 0.76, 0.32));
+            })();
+            const mcAp = maplibregl.MercatorCoordinate.fromLngLat([15.404004, 47.031157], 0);
+            apr.position.set((mcAp.x - T.x) / T.scale, 0, (mcAp.y - T.y) / T.scale);
+            scene.add(apr);
+
             // ---- Uni Graz Hauptgebäude (Universitätsplatz, 1895) ----
             // ~2.9 km NE. Ring­straßen-style main building around a big courtyard,
             // with a raised risalit + slate cupola on the SW (plaza) facade.
@@ -1513,6 +1549,8 @@
                 lng: 15.450314,  lat: 47.069085,  polys: [{ p: TU_OUT, h: 18 }] },
               { name: 'TU Graz — Neue Technik', info: "Second main building of Graz University of Technology on Stremayrgasse (opened 1912) - home of the chemistry institutes. Together with the Alte Technik it frames the historic TU campus.",
                 lng: 15.4508763, lat: 47.0649005, polys: [{ p: NT_POLY, h: 19 }] },
+              { name: 'Anton Paar', info: "Headquarters of Anton Paar, Graz's maker of precision measuring instruments - density meters, rheometers and lab analytics exported worldwide. Founded in 1922 as a one-man locksmith's workshop.",
+                lng: 15.404004,  lat: 47.031157,  polys: [{ p: AP_HQ, h: 23 }, { p: AP_HALL, h: 8 }] },
               { name: 'Uni Graz — Hauptgebäude', info: "Main building of the University of Graz on Universitaetsplatz (1895, historicist style). The university itself is Austria's second-oldest, founded in 1585.",
                 lng: 15.449878,  lat: 47.077747,  polys: [{ p: UNI_OUT, h: 17 }] }
             );
