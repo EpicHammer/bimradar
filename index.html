@@ -5,12 +5,34 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BimRadar — Elias Hammer</title>
   <meta name="description" content="Live map of Graz Bims, buses and trains — tracked in real time.">
+
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#0d0f12" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BimRadar">
+  <link rel="apple-touch-icon" href="./icon-180.png?v=2">
+  <link rel="icon" href="./icon-32.png?v=2" sizes="32x32">
+  <link rel="shortcut icon" href="./icon-32.png?v=2">
+
+  <!-- warm up the third-party origins while the HTML is still parsing -->
+  <link rel="preconnect" href="https://basemaps.cartocdn.com" crossorigin>
+  <link rel="preconnect" href="https://tiles.basemaps.cartocdn.com" crossorigin>
+  <link rel="preconnect" href="https://verkehrsauskunft.verbundlinie.at" crossorigin>
+
+  <!-- self-hosted MapLibre: same origin as the page, gzipped by our nginx, no
+       unpkg handshake. defer lets the UI paint before the 210 KB script lands. -->
+  <link rel="stylesheet" href="./maplibre-gl.css?v=4.7.1">
+  <script defer src="./maplibre-gl.js?v=4.7.1"></script>
   <style>
     :root {
       color-scheme: dark;
       --bg: #0d0f12; --fg: #e8eaed; --muted: #9aa0a6; --accent: #6ea8fe;
       --line: #23262b; --card: #14171c; --ink-2: #c3c2b7; --ink-3: #898781;
       --tram: #e66767; --bus: #3987e5; --regio: #008300; --night: #9085e9; --train: #898781;
+      --cable: #2bb3a3;
       --ok: #199e70;
     }
     :root[data-theme="light"] {
@@ -18,6 +40,7 @@
       --bg: #f5f6f8; --fg: #1a1c1e; --muted: #5f6368; --accent: #1a6dff;
       --line: #e4e4e1; --card: #ffffff; --ink-2: #52514e; --ink-3: #898781;
       --tram: #e34948; --bus: #2a78d6; --regio: #008300; --night: #4a3aa7; --train: #898781;
+      --cable: #0f9488;
       --ok: #1baf7a;
     }
     @media (prefers-color-scheme: light) {
@@ -34,18 +57,29 @@
     html, body { max-width: 100%; overflow-x: hidden; }
     body { margin: 0; color: var(--fg); background: var(--bg); overflow: hidden;
       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-    #mapstage { position: fixed; inset: 0; }
+    /* own stacking context: marker depth z-indexes (thousands) stay inside the
+       map layer and can never rise above the panel (z 5+) */
+    #mapstage { position: fixed; inset: 0; z-index: 1; }
     #map { width: 100%; height: 100%; background: #242f3e; }
     :root[data-theme="light"] #map { background: #e9ecef; }
 
+    :root { --glasshi: rgba(255,255,255,.07); }
+    :root[data-theme="light"] { --glasshi: rgba(255,255,255,.65); }
+    @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --glasshi: rgba(255,255,255,.65); } }
     main {
       position: fixed; top: 0; left: 0; bottom: 0; width: min(340px, 100vw);
       z-index: 5; overflow-y: auto; overscroll-behavior: contain;
-      background: color-mix(in srgb, var(--card) 88%, transparent);
-      backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+      background: color-mix(in srgb, var(--card) 84%, transparent);
+      /* saturate makes the map colours glow through instead of greying out */
+      backdrop-filter: blur(24px) saturate(1.6); -webkit-backdrop-filter: blur(24px) saturate(1.6);
       border-right: 1px solid var(--line); padding: .9rem 1.05rem;
-      box-shadow: 8px 0 40px rgba(0,0,0,.3); transition: transform .28s ease;
+      box-shadow: inset 0 1px 0 var(--glasshi), 8px 0 40px rgba(0,0,0,.35);
+      transition: transform .28s ease;
+      scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--fg) 18%, transparent) transparent;
     }
+    main::-webkit-scrollbar { width: 6px; }
+    main::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--fg) 18%, transparent); border-radius: 999px; }
+    main::-webkit-scrollbar-track { background: transparent; }
     body.panel-hidden main { transform: translateX(-105%); }
     #panelshow { position: fixed; top: 14px; left: 14px; z-index: 6; display: none; }
     body.panel-hidden #panelshow { display: grid; }
@@ -72,15 +106,29 @@
 
     header { display: flex; align-items: center; justify-content: space-between; gap: .8rem; margin-bottom: .5rem; }
     h1 { font-size: 1.3rem; margin: 0; font-weight: 700; letter-spacing: -0.02em; }
-    h1 small { display: block; font-size: .74rem; font-weight: 500; color: var(--muted); }
+    h1 .brandrow { display: flex; align-items: center; gap: .5rem; }
+    h1 small { display: block; font-size: .72rem; font-weight: 500; color: var(--muted);
+      letter-spacing: 0; white-space: nowrap; margin-top: 1px; }
+    .brandmark { flex: none; width: 21px; height: 21px; color: var(--fg); }
     .hright { display: flex; gap: .4rem; }
     .tbtn { width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--line);
-      background: var(--card); color: var(--fg); font-size: 1rem; cursor: pointer; display: grid; place-items: center; }
-    .tbtn:hover { border-color: var(--accent); }
-    #panelshow { width: 38px; height: 38px; box-shadow: 0 6px 20px rgba(0,0,0,.3); }
+      background: color-mix(in srgb, var(--card) 72%, transparent);
+      backdrop-filter: blur(12px) saturate(1.5); -webkit-backdrop-filter: blur(12px) saturate(1.5);
+      box-shadow: inset 0 1px 0 var(--glasshi), 0 2px 8px rgba(0,0,0,.12);
+      color: var(--fg); font-size: 1rem; cursor: pointer; display: grid; place-items: center;
+      transition: border-color .15s ease, background .15s ease, transform .15s ease, box-shadow .15s ease; }
+    .tbtn svg { width: 16px; height: 16px; display: block; }
+    .tbtn:hover { border-color: var(--accent); transform: translateY(-1px);
+      box-shadow: inset 0 1px 0 var(--glasshi), 0 5px 14px rgba(0,0,0,.18); }
+    .tbtn:active { transform: translateY(0) scale(.96); }
+    .tbtn[aria-pressed="true"] {
+      border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+      background: color-mix(in srgb, var(--accent) 16%, var(--card));
+      color: var(--accent);
+    }
+    button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #panelshow { width: 38px; height: 38px; box-shadow: inset 0 1px 0 var(--glasshi), 0 6px 20px rgba(0,0,0,.3); }
     .grabber { display: none; }
-    /* desktop: the panel slides left, so the chevron points left */
-    #panelhide::before { content: "\2039"; font-size: 1.2rem; line-height: 1; }
 
     .live .pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); position: relative; }
     .live .pulse::after { content: ""; position: absolute; inset: -4px; border-radius: 50%;
@@ -93,13 +141,22 @@
     .chiprow { display: flex; align-items: center; gap: .3rem; margin: .1rem 0 .8rem; flex-wrap: wrap; }
     .vchip {
       display: inline-flex; align-items: center; gap: .3rem;
-      border: 1px solid var(--line); background: var(--card); color: var(--fg);
+      border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+      background: color-mix(in srgb, var(--accent) 7%, var(--card)); color: var(--fg);
+      box-shadow: inset 0 1px 0 var(--glasshi);
       font: inherit; font-size: .76rem; border-radius: 999px;
       padding: .22rem .5rem .22rem .38rem; cursor: pointer;
-      transition: border-color .12s ease, opacity .12s ease;
+      transition: border-color .15s ease, background .15s ease, opacity .15s ease, transform .15s ease;
     }
-    .vchip:hover { border-color: var(--accent); }
-    .vchip[aria-pressed="false"] { opacity: .38; }
+    .vchip:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .vchip:active { transform: translateY(0) scale(.97); }
+    .vchip[aria-pressed="false"] { opacity: .38; background: var(--card); border-color: var(--line); }
+    @keyframes countpop { 50% { transform: scale(1.3); } }
+    .vchip b { display: inline-block; }
+    .vchip b.pop { animation: countpop .3s ease; }
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; animation: none !important; }
+    }
     .vchip .vic { display: inline-flex; align-items: center; width: 22px; height: 12px; }
     .vchip .vic svg { width: 22px; height: 12px; display: block; }
     .vchip b { font-variant-numeric: tabular-nums; font-weight: 650; }
@@ -112,20 +169,28 @@
     .tripform { display: grid; gap: .5rem; }
     .fieldwrap { position: relative; }
     .fieldwrap input { width: 100%; font: inherit; font-size: 16px; color: var(--fg);
-      background: var(--card); border: 1px solid var(--line); border-radius: 11px;
-      padding: .58rem 4.3rem .58rem .7rem; }
-    .fieldwrap input:focus { outline: none; border-color: var(--accent); }
+      background: color-mix(in srgb, var(--card) 80%, transparent);
+      border: 1px solid var(--line); border-radius: 12px;
+      box-shadow: inset 0 1px 0 var(--glasshi);
+      padding: .58rem 4.3rem .58rem .7rem;
+      transition: border-color .15s ease, box-shadow .15s ease; }
+    .fieldwrap input:focus { outline: none; border-color: var(--accent);
+      box-shadow: inset 0 1px 0 var(--glasshi), 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
     .fieldwrap input.armed { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
     .pickhint { margin: -.15rem 0 0; font-size: .74rem; color: var(--accent); }
     .minis { position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
       display: flex; gap: 2px; }
-    .mini { width: 30px; height: 30px; border-radius: 8px; border: 0; background: transparent;
-      color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0; }
-    .mini:hover { color: var(--accent); }
-    .mini.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+    .mini { width: 30px; height: 30px; border-radius: 9px; border: 0; background: transparent;
+      color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0;
+      display: grid; place-items: center; transition: color .15s ease, background .15s ease, transform .15s ease; }
+    .mini svg { width: 15px; height: 15px; display: block; }
+    .mini:hover { color: var(--accent); transform: translateY(-1px); }
+    .mini:active { transform: scale(.94); }
+    .mini.on { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
     .sugg { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 9;
-      background: var(--card); border: 1px solid var(--line); border-radius: 11px;
-      overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.3); max-height: 240px; overflow-y: auto; }
+      background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+      overflow: hidden; box-shadow: inset 0 1px 0 var(--glasshi), 0 10px 30px rgba(0,0,0,.3);
+      max-height: 240px; overflow-y: auto; }
     .sugg { max-width: 100%; }
     .sugg div { padding: .45rem .7rem; font-size: .84rem; cursor: pointer; overflow-wrap: anywhere; }
     .sugg div:hover, .sugg div.on { background: color-mix(in srgb, var(--accent) 16%, transparent); }
@@ -134,11 +199,25 @@
     .sugg .sub2 { color: var(--ink-3); font-size: .74rem; }
     .sugg .nores { color: var(--muted); font-size: .82rem; cursor: default; }
     .gorow { display: flex; gap: .4rem; }
-    .clr { width: 46px; flex: none; border: 1px solid var(--line); border-radius: 11px;
-      background: transparent; color: var(--muted); font-size: 1rem; cursor: pointer; }
-    .clr:hover { border-color: var(--tram); color: var(--tram); }
-    .go { flex: 1; border: 0; border-radius: 11px; padding: .6rem; cursor: pointer;
-      background: var(--accent); color: #0b1220; font: inherit; font-weight: 700; font-size: .9rem; }
+    .clr { width: 46px; flex: none; border: 1px solid var(--line); border-radius: 12px;
+      background: transparent; color: var(--muted); font-size: 1rem; cursor: pointer;
+      display: grid; place-items: center; transition: border-color .15s ease, color .15s ease, transform .15s ease; }
+    .clr svg { width: 15px; height: 15px; display: block; }
+    .clr:hover { border-color: var(--tram); color: var(--tram); transform: translateY(-1px); }
+    .clr:active { transform: scale(.96); }
+    .go { flex: 1; border: 0; border-radius: 12px; padding: .6rem; cursor: pointer;
+      background: linear-gradient(180deg,
+        color-mix(in srgb, var(--accent) 86%, #fff) 0%,
+        var(--accent) 55%,
+        color-mix(in srgb, var(--accent) 84%, #000) 100%);
+      color: #0b1220; font: inherit; font-weight: 700; font-size: .9rem;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.28),
+                  0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent);
+      transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease; }
+    .go:hover:not(:disabled) { transform: translateY(-1px);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.28),
+                  0 7px 20px color-mix(in srgb, var(--accent) 45%, transparent); }
+    .go:active:not(:disabled) { transform: translateY(0) scale(.99); }
     .go:disabled { opacity: .5; cursor: default; }
 
     .opt { border: 1px solid var(--line); border-radius: 12px; padding: .6rem .7rem;
@@ -162,18 +241,26 @@
     #livetxt { min-height: 2.4em; margin: .5rem 0 0; }
     .err { color: var(--tram); font-size: .82rem; margin-top: .6rem; }
     hr { border: 0; border-top: 1px solid var(--line); margin: .9rem 0; }
-    /* Google's info bubble is always white, but its content inherits our --fg,
-       which is near-white in dark mode. So the popup paints its OWN surface and
-       sets every text colour explicitly — readable whatever Google does. */
-    .gm-style .gm-style-iw-d { font: .85rem/1.5 system-ui, sans-serif; overflow: hidden !important; }
-    .gm-style .gm-style-iw-c, .gm-style .gm-style-iw-d { background: var(--card) !important; }
-    .gm-style .gm-style-iw-tc::after { background: var(--card); }
-    .gm-style .gm-style-iw-c { box-shadow: 0 4px 20px rgba(0,0,0,.35); }
-    .gm-style .gm-style-iw button.gm-ui-hover-effect > span { background-color: var(--muted) !important; }
-    .iw {
-      background: var(--card); color: var(--fg);
-      margin: -10px -14px; padding: 10px 14px 12px; border-radius: 8px;
+    /* MapLibre popup: paint our own surface so it reads in light and dark. The
+       tip is coloured on every side because MapLibre picks the anchor at runtime. */
+    .maplibregl-popup { z-index: 99999; }   /* above every marker, incl. depth-sorted ones */
+    .bm-pop .maplibregl-popup-content {
+      background: var(--card); color: var(--fg); font: .85rem/1.5 system-ui, sans-serif;
+      border-radius: 12px; padding: 12px 14px; box-shadow: 0 8px 30px rgba(0,0,0,.4);
     }
+    .bm-pop .maplibregl-popup-tip { border-top-color: var(--card); border-bottom-color: var(--card);
+      border-left-color: var(--card); border-right-color: var(--card); }
+    .bm-pop .maplibregl-popup-close-button { color: var(--muted); font-size: 1.1rem; padding: 0 .35rem; }
+    .bm-pop .maplibregl-popup-close-button:hover { background: transparent; color: var(--fg); }
+    /* DOM markers: zero-size anchor boxes whose children draw around the point */
+    .veh, .stopm, .pinm { position: absolute; width: 0; height: 0; }
+    .veh, .stopm { cursor: pointer; }
+    .veh > * { transition: opacity .35s ease; }   /* occlusion ghosting fades, not pops */
+    .veh .vlabel { position: absolute; left: 0; transform: translateX(-50%);
+      color: var(--fg); font: 700 11px/1 system-ui, sans-serif; white-space: nowrap;
+      text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg); pointer-events: none; }
+    .maplibregl-ctrl-attrib { font-size: 10px; }
+    .iw { background: var(--card); color: var(--fg); }
     .iw .canon, .iw b { color: var(--fg); }
     .iw .route { color: var(--ink-2); }
     .iw .dirn, .iw .next { color: var(--muted); }
@@ -240,16 +327,30 @@
 </head>
 <body>
   <div id="mapstage"><div id="map"></div></div>
-  <button class="tbtn" id="panelshow" title="Show panel">☰</button>
+  <button class="tbtn" id="panelshow" title="Show panel">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9.6 4v16"/></svg>
+  </button>
   <main>
     <button class="grabber" id="grabber" title="Collapse panel" aria-label="Collapse panel">
       <span class="peek" id="peek"></span>
     </button>
     <header>
-      <h1>BimRadar <small>Bims &amp; Busse, live in Graz</small></h1>
+      <h1>
+        <span class="brandrow">
+          <svg class="brandmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+            <rect x="7" y="2.6" width="10" height="18.8" rx="3.4"/>
+            <rect x="9.4" y="5.2" width="5.2" height="3.8" rx="1" fill="currentColor" stroke="none"/>
+            <circle cx="10.1" cy="17.6" r=".95" fill="currentColor" stroke="none"/>
+            <circle cx="13.9" cy="17.6" r=".95" fill="currentColor" stroke="none"/>
+          </svg>BimRadar</span>
+        <small>Bims &amp; Busse, live in Graz</small>
+      </h1>
       <div class="hright">
-        <button class="tbtn" id="themebtn" title="Light/dark">🌙</button>
-        <button class="tbtn" id="panelhide" title="Hide panel" aria-label="Hide panel"></button>
+        <button class="tbtn" id="btn3d" title="3D view" aria-pressed="false" style="font-size:.72rem;font-weight:700">3D</button>
+        <button class="tbtn" id="themebtn" title="Light/dark"></button>
+        <button class="tbtn" id="panelhide" title="Hide panel" aria-label="Hide panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg>
+        </button>
       </div>
     </header>
 
@@ -268,23 +369,33 @@
       <div class="fieldwrap">
         <input id="from" type="text" placeholder="From — stop, address…" autocomplete="off">
         <span class="minis">
-          <button class="mini" id="pick-from" title="Pick on the map (no typing)">📍</button>
-          <button class="mini" id="usegeo" title="Use my location">◎</button>
+          <button class="mini" id="pick-from" title="Pick on the map (no typing)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.2-5.4-6.2-10.2a6.2 6.2 0 1 1 12.4 0C18.2 15.6 12 21 12 21z"/><circle cx="12" cy="10.6" r="2.1"/></svg>
+          </button>
+          <button class="mini" id="usegeo" title="Use my location">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3"/></svg>
+          </button>
         </span>
         <div class="sugg" id="sugg-from" hidden></div>
       </div>
       <div class="fieldwrap">
         <input id="to" type="text" placeholder="To — where are you going?" autocomplete="off">
         <span class="minis">
-          <button class="mini" id="pick-to" title="Pick on the map (no typing)">📍</button>
-          <button class="mini" id="swap" title="Swap">⇅</button>
+          <button class="mini" id="pick-to" title="Pick on the map (no typing)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.2-5.4-6.2-10.2a6.2 6.2 0 1 1 12.4 0C18.2 15.6 12 21 12 21z"/><circle cx="12" cy="10.6" r="2.1"/></svg>
+          </button>
+          <button class="mini" id="swap" title="Swap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 20V7M8 7L5 10M8 7l3 3M16 4v13m0 0l-3-3m3 3l3-3"/></svg>
+          </button>
         </span>
         <div class="sugg" id="sugg-to" hidden></div>
       </div>
         <p class="pickhint" id="pickhint" hidden></p>
       <div class="gorow">
         <button class="go" id="go">Find connections</button>
-        <button class="clr" id="clear" title="Clear search" aria-label="Clear search" hidden>✕</button>
+        <button class="clr" id="clear" title="Clear search" aria-label="Clear search" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
       </div>
     </div>
     <p class="err" id="triperr" hidden></p>
@@ -297,8 +408,12 @@
   (() => {
     'use strict';
     const $ = id => document.getElementById(id);
-    const GMAPS_KEY = 'AIzaSyABPLltpX2yofa69cX3gkQ0NaF7M6BbrNg';
-    const MAP_ID = 'a57680cb3f01046825559038';   // vector map: client-side WebGL, no tile seams
+    // Keyless MapLibre vector basemaps (CARTO): no API key, no per-load billing.
+    // dark-matter / positron mirror the app's own dark / light theme.
+    const STYLE = {
+      dark:  'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+      light: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
+    };
     const GRAZ = { lat: 47.0707, lng: 15.4395 };
 
     // ---------- HAFAS (Verbundlinie) ----------
@@ -343,7 +458,8 @@
       if (/stadtbus|citybus/.test(cat)) return 'bus';
       if (/bus|taxi|ruf|sammel/.test(cat)) return 'regio';
 
-      if (cls === 16 || cls === 256) return 'tram';
+      if (cls === 256) return 'cable';   // funicular / cable railway — Graz's Schloßbergbahn (SBL), the Almbahn. NOT a tram.
+      if (cls === 16) return 'tram';
       if (cls === 128) return 'bus';
       if (cls === 64 || cls === 32 || cls === 1024 || cls === 2048) return 'regio';
       return 'train';
@@ -351,9 +467,11 @@
     const KIND_COLOR = {
       tram:  () => cssv('--tram'),  bus:   () => cssv('--bus'),
       regio: () => cssv('--regio'), night: () => cssv('--night'),
-      train: () => cssv('--train')
+      train: () => cssv('--train'), cable: () => cssv('--cable')
     };
-    const KIND_LABEL = { tram: 'Stra\u00dfenbahn', bus: 'Stadtbus', regio: 'RegioBus', night: 'Nachtlinie', train: 'Zug' };
+    const KIND_LABEL = { tram: 'Stra\u00dfenbahn', bus: 'Stadtbus', regio: 'RegioBus', night: 'Nachtlinie', train: 'Zug', cable: 'Schlo\u00dfbergbahn' };
+    // The funicular has no filter chip of its own \u2014 it rides under the Bim toggle.
+    const chipOf = k => k === 'cable' ? 'tram' : k;
     // Official Graz tram line colours, sampled from the Verbund Linie Liniennetzplan
     // (Stand 11. Juli 2026). These are what people actually recognise on the network map.
     const LINE_COLOR = {
@@ -379,83 +497,975 @@
     let LINES = {};
     fetch('./lines.json').then(r => r.ok ? r.json() : {}).then(d => { LINES = d; }).catch(() => {});
     const vehicles = new Map();   // jid -> {marker, kind, line, dir, from, to, t0, dur, head}
+    const LMK_OCC = [];           // landmark occluders, filled once by the 3D layer's onAdd
     const filters = { tram: true, bus: true, regio: true, night: true, train: false };
     let pollTimer = null, lastOk = 0, inFlight = false;
     const stops = new Map();          // extId -> marker
     let stopsOn = true, stopsBusy = false, lastStopKey = '';
-    const STOP_MIN_ZOOM = 14;
+    const STOP_MIN_ZOOM = 13;
 
-    // ---------- google maps bootstrap ----------
-    function ensureMaps() {
-      if (window.google && google.maps) return true;
-      if (gLoading) return false;
-      gLoading = true;
-      window.__bmReady = initMap;
-      const s = document.createElement('script');
-      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(GMAPS_KEY) + '&callback=__bmReady&v=weekly';
-      s.async = true;
-      s.onerror = () => showErr('Google Maps failed to load — check your connection.');
-      document.head.appendChild(s);
-      return false;
+    // ---------- MapLibre bootstrap ----------
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    // A thin marker wrapper: keeps the google.maps.Marker call-sites this app uses
+    // (setPosition / setIcon / setMap / getMap / getPosition / addListener) while
+    // MapLibre draws a plain DOM element anchored (0,0) at the coordinate.
+    class Mk {
+      constructor(o) {
+        const el = o.element;
+        this.el = el;
+        if (o.title) el.title = o.title;
+        if (o.zIndex != null) el.style.zIndex = o.zIndex;
+        this._zb = o.zIndex || 0;
+        this._ds = !!o.depthSort;
+        this._render = o.render || null;
+        if (this._render) this._render(el);
+        this._pos = o.position;
+        // ground: true lies the element flat on the map plane (vehicles, stop
+        // badges) so the tilted 3D view reads like a drone shot; pins stay
+        // upright billboards.
+        const align = o.ground ? 'map' : 'viewport';
+        this._mk = new maplibregl.Marker({ element: el, rotationAlignment: align, pitchAlignment: align });
+        this._mk.setLngLat([this._pos.lng, this._pos.lat]);
+        this._shown = false;
+        if (o.map) this.setMap(o.map);
+      }
+      setPosition(p) {
+        this._pos = p; this._mk.setLngLat([p.lng, p.lat]);
+        // depth sort: in the tilted view, nearer (southern) vehicles must paint
+        // over farther ones. Latitude maps straight to stacking order.
+        if (this._ds) this.el.style.zIndex = this._zb + Math.round((48.5 - p.lat) * 4000);
+        return this;
+      }
+      getPosition() { return this._pos; }
+      setIcon(render) { this._render = render; if (render) render(this.el); return this; }
+      setLabel() { return this; }               // label is folded into the element render
+      setMap(m) {
+        if (m) { if (!this._shown) { this._mk.addTo(m); this._shown = true; } }
+        else if (this._shown) { this._mk.remove(); this._shown = false; }
+        return this;
+      }
+      getMap() { return this._shown ? map : null; }
+      addListener(ev, cb) {
+        if (ev === 'click') this.el.addEventListener('click', e => { e.stopPropagation(); cb(e); });
+        return this;
+      }
     }
 
-    function mapOptions() {
+    // InfoWindow stand-in over maplibregl.Popup — same setContent/open/close surface.
+    function makeInfo() {
+      const p = new maplibregl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '300px', className: 'bm-pop', offset: 16 });
+      p.on('close', () => clearRoute());
       return {
-        center: GRAZ, zoom: 13,
-        mapId: MAP_ID,
-        colorScheme: isDark() ? 'DARK' : 'LIGHT',
-        mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
-        zoomControl: false, cameraControl: false, rotateControl: false,
-        gestureHandling: 'greedy', clickableIcons: false
+        setContent(node) { p.setDOMContent(node); },
+        open(o) {
+          const pos = o.lngLat || (o.anchor && o.anchor.getPosition());
+          if (!pos) return;
+          p.setLngLat([pos.lng, pos.lat]);
+          if (!p.isOpen()) p.addTo(map);
+        },
+        close() { if (p.isOpen()) p.remove(); }
       };
     }
-    function initMap() {
-      map = new google.maps.Map($('map'), mapOptions());
-      info = new google.maps.InfoWindow();
-      info.addListener('closeclick', () => { clearRoute(); });
-      map.addListener('click', ev => {
-        if (armed && ev.latLng) { pickPoint(armed, ev.latLng); return; }
-        info.close(); clearRoute();
-      });
-      map.addListener('idle', () => { poll(); loadStops(); });
-      map.addListener('zoom_changed', () => {
-        for (const m of stops.values()) m.setIcon(stopIcon(m.__tram));
-        for (const v of vehicles.values()) {
-          v.marker.setIcon(vIcon(v.kind, v.head, v.line));
-          if (v.tag) v.tag.setIcon(tagIcon());
-        }
-      });
-      poll();
-      if (!pollTimer) pollTimer = setInterval(poll, 7000);
-      requestAnimationFrame(animate);
+
+    // GeoJSON line layers stand in for google.maps.Polyline (route + trip overlays)
+    function setLine(id, pts, paint) {
+      removeLine(id);
+      map.addSource(id, { type: 'geojson',
+        data: { type: 'Feature', geometry: { type: 'LineString', coordinates: pts.map(p => [p.lng, p.lat]) } } });
+      map.addLayer({ id, type: 'line', source: id, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint });
     }
-    // colorScheme is fixed at construction, so switching theme rebuilds the map
-    function rebuildMap() {
+    function removeLine(id) {
+      if (map && map.getLayer(id)) map.removeLayer(id);
+      if (map && map.getSource(id)) map.removeSource(id);
+    }
+
+    // ---------- 3D: tilted camera + extruded buildings ----------
+    let pitched = false;
+    try { pitched = localStorage.getItem('bm_3d') === '1'; } catch (e) {}
+    // The Uhrturm, hand-built from three stacked extrusion tiers (shaft, wooden
+    // gallery ring, roof cap) at its real OSM location — the Schlossberg has no
+    // building footprints, so without it the city's landmark hill is a void.
+    const UHRTURM = {"type":"FeatureCollection","features":[{"type":"Feature","properties":{"b":0,"h":19,"c":"#ded5c4"},"geometry":{"type":"Polygon","coordinates":[[[15.4376703,47.0734991],[15.4377891,47.0734991],[15.4377891,47.0735799],[15.4376703,47.0735799],[15.4376703,47.0734991]]]}},{"type":"Feature","properties":{"b":19,"h":23.5,"c":"#7a5b43"},"geometry":{"type":"Polygon","coordinates":[[[15.4376506,47.0734856],[15.4378088,47.0734856],[15.4378088,47.0735934],[15.4376506,47.0735934],[15.4376506,47.0734856]]]}},{"type":"Feature","properties":{"b":23.5,"h":30,"c":"#a34a38"},"geometry":{"type":"Polygon","coordinates":[[[15.4376809,47.0735063],[15.4377785,47.0735063],[15.4377785,47.0735727],[15.4376809,47.0735727],[15.4376809,47.0735063]]]}}]};
+    // CARTO's tiles carry real building heights; 12 m is the toy-town fallback.
+    // Shared "hide the real Uhrturm + its hilltop clutter" predicate. A `within`
+    // bbox fails here — footprints are clipped at a vector-tile boundary and
+    // `within` returns false for clipped geometry — so we key off CARTO's
+    // properties instead: `hide_3d` (CARTO's flag for the plain footprint of a
+    // detailed landmark) plus the tower/Schlossberg's distinctive OSM colours.
+    // Applied to both the 3D extrusion layer AND CARTO's flat `building` /
+    // `building-top` fills — otherwise those flat fills draw the tower's real
+    // footprint as a pale plate poking out around our hand-modeled base.
+    // CARTO tiles carry the OSM id as the MapLibre feature id, so a hand-modeled
+    // landmark whose CARTO footprint has no distinctive colour (e.g. the plain
+    // grey Glockenturm) can be hidden precisely by id — `within` is unusable
+    // here (tile-clipped geometry always returns false).
+    // OSM ids whose CARTO footprints our three.js models replace. NB: CARTO
+    // renders each `building:part` as its OWN feature (own id), so a multi-part
+    // building (the church) needs every part listed, not just the outline.
+    const LANDMARK_IDS = [
+      122074496,                                                   // Glockenturm
+      23786584, 1445223691, 1445223692, 1445223693,                // Murinsel: deck + café/pavilion structures
+      82754770,                                                    // Herz-Jesu-Kirche outline
+      189669884, 189671729, 189671731, 189671732, 189671733,       // …+ its 23 building:parts
+      189671734, 189671735, 189671736, 189671737, 189671738,
+      189671739, 189671740, 189671741, 189671742, 189673812,
+      189673813, 189673814, 189673815, 189674865, 189674866,
+      189674867, 190442413, 190442414,
+      86174340, 385927810, 1445223695,                             // Kunsthaus: outline, "Friendly Alien" blob, Eisernes Haus
+      38163212, 588711028, 588711029, 588711030,                   // Mausoleum: church outline + 3 dome parts
+      98928218,                                                    // Rathaus
+      86174338,                                                    // Mariahilferkirche
+      84579393,                                                    // Grazer Dom
+      84579409,                                                    // Franziskanerkirche
+      29714926,                                                    // Opernhaus
+      29714804,                                                    // Stadtpfarrkirche
+      29714669,                                                    // Leechkirche
+      163983629, 29715115, 30168156, 984935018, 84579396, 85081251 // Grazer Burg member ways + Burgtor + Paulustor block
+      // NB: CARTO renders the Burg relation itself as feature id 67773 — that id is
+      // PROVABLY reused for unrelated buildings in other tiles, so it must NOT be
+      // hidden; the model encloses that extrusion instead (same footprint, taller).
+    ];
+    const HIDE_TOWER = ['all',
+      ['!=', ['get', 'hide_3d'], true],
+      ['!=', ['get', 'colour'], '#dca96b'],                                  // Uhrturm tan shaft
+      ['!', ['all', ['==', ['get', 'colour'], '#5a3d29'],                    // Uhrturm brown galleries
+                    ['==', ['get', 'render_min_height'], 13]]],
+      ['!=', ['get', 'colour'], '#5a81a0'],                                  // Schlossberg bastion structures / terrace slabs
+      ['!', ['in', ['id'], ['literal', LANDMARK_IDS]]]                       // modeled landmarks, by OSM id
+    ];
+    function ensure3D() {
       if (!map) return;
-      const c = map.getCenter(), z = map.getZoom();
-      // Do NOT drop the vehicles: emptying them makes every count fall to 0, the
-      // status line rewraps, and a bottom-anchored sheet resizes from the top —
-      // which reads as the panel jumping. Markers are re-parented instead.
-      clearStops(); clearRoute(); clearTripLine();
-      lastStopKey = '';
-      const opts = mapOptions();
-      opts.center = { lat: c.lat(), lng: c.lng() }; opts.zoom = z;
-      map = new google.maps.Map($('map'), opts);
-      info = new google.maps.InfoWindow();
-      info.addListener('closeclick', () => { clearRoute(); });
-      map.addListener('click', ev => {
-        if (armed && ev.latLng) { pickPoint(armed, ev.latLng); return; }
-        info.close(); clearRoute();
-      });
-      map.addListener('idle', () => { poll(); loadStops(); });
-      // move the existing vehicles onto the new map instance, restyled for the theme
-      for (const v of vehicles.values()) {
-        v.marker.setIcon(vIcon(v.kind, v.head, v.line));
-        v.marker.setMap(map);
-        if (v.tag) { v.tag.setLabel(tagLabel(v.line)); v.tag.setMap(map); }
+      // Hide the tower's real footprint in CARTO's flat 2D fills (idempotent;
+      // re-run via refresh3D on every idle, so it survives a theme setStyle).
+      for (const lid of ['building', 'building-top'])
+        if (map.getLayer(lid)) try { map.setFilter(lid, HIDE_TOWER); } catch (e) {}
+      if (!map.getLayer('b3d')) try {
+        map.addLayer({
+          id: 'b3d', type: 'fill-extrusion', source: 'carto', 'source-layer': 'building',
+          minzoom: 14,
+          // Hide CARTO's own Uhrturm so only our hand-modeled tower shows.
+          filter: HIDE_TOWER,
+          layout: { visibility: pitched ? 'visible' : 'none' },
+          paint: {
+            'fill-extrusion-color': isDark() ? '#30343c' : '#d9d6cf',
+            'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 12],
+            'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
+            'fill-extrusion-opacity': 0.85,
+            'fill-extrusion-vertical-gradient': true
+          }
+        });
+      } catch (e) { /* style without a building layer: 3D quietly unavailable */ }
+      if (!map.getLayer('uhrturm')) try {
+        if (!map.getSource('uhrturm')) map.addSource('uhrturm', { type: 'geojson', data: UHRTURM });
+        map.addLayer({
+          id: 'uhrturm', type: 'fill-extrusion', source: 'uhrturm',
+          minzoom: 13,
+          layout: { visibility: pitched ? 'visible' : 'none' },
+          paint: {
+            'fill-extrusion-color': ['get', 'c'],
+            'fill-extrusion-height': ['get', 'h'],
+            'fill-extrusion-base': ['get', 'b'],
+            'fill-extrusion-opacity': 0.95,
+            'fill-extrusion-vertical-gradient': true
+          }
+        });
+      } catch (e) {}
+    }
+    // ---------- Stage 2: procedural three.js Uhrturm ----------
+    // Lazy: three.js (267 KB gz) is imported only when 3D is first switched on.
+    // The Stage-1 extrusion tower stays as the instant fallback and is hidden
+    // once the modeled one is live. Built in code — no asset pipeline.
+    let threeLayerFactory = null, threeLoading = false;
+    async function ensureThree() {
+      if (threeLayerFactory || threeLoading) return;
+      threeLoading = true;
+      let THREE;
+      try { THREE = await import('./three.module.js?v=0.170.0'); }
+      catch (e) { threeLoading = false; return; }   // stays on the blocky tower
+      // Let three keep its default managed round-trip (decode sRGB->linear on
+      // input, re-encode linear->sRGB on output, in-shader). Net identity, so
+      // the authored hex colours render EXACTLY as written — matching how
+      // MapLibre paints the surrounding CARTO buildings. (Disabling color
+      // management skips the input decode but not the output encode here, which
+      // darkens + red-shifts everything into "linear mud".)
+      const mc = maplibregl.MercatorCoordinate.fromLngLat([15.4377297, 47.0735395], 0);
+      const T = { x: mc.x, y: mc.y, z: 0, scale: mc.meterInMercatorCoordinateUnits() };
+      threeLayerFactory = () => {
+        let camera, scene, renderer;
+        return {
+          id: 'uhrturm3js', type: 'custom', renderingMode: '3d',
+          onAdd(m, gl) {
+            camera = new THREE.Camera();
+            scene = new THREE.Scene();
+            // no lights: three's lighting model changed across releases (legacy
+            // lights, PI factors), so shading is BAKED into basic materials —
+            // deterministic forever, and it matches the flat toy-city look.
+            const mat = (c, f) => new THREE.MeshBasicMaterial({
+              color: new THREE.Color(c).multiplyScalar(f) });
+            // BoxGeometry face order: +x, -x, +y(top), -y, +z, -z
+            const boxMats = c => [mat(c, .78), mat(c, .78), mat(c, 1.05), mat(c, .5), mat(c, 1), mat(c, .88)];
+            const g = new THREE.Group();
+            const add = (mesh, y) => { mesh.position.y = y; g.add(mesh); return mesh; };
+            add(new THREE.Mesh(new THREE.BoxGeometry(9, 19, 9), boxMats(0xded5c4)), 9.5);      // shaft
+            add(new THREE.Mesh(new THREE.BoxGeometry(13.4, 0.6, 13.4), boxMats(0x5e4634)), 19.3); // gallery floor
+            add(new THREE.Mesh(new THREE.BoxGeometry(11.6, 3.4, 11.6), boxMats(0x7a5b43)), 21.3); // gallery
+            const roof = add(new THREE.Mesh(new THREE.ConeGeometry(8.6, 9.5, 4), mat(0xa34a38, 1)), 27.75);
+            roof.rotation.y = Math.PI / 4;               // 4-sided cone -> square hip roof
+            add(new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 8), mat(0xd9b23a, 1)), 32.6); // golden tip
+            // the four famous clock faces (the Uhrturm's big hand shows the HOURS)
+            // decals: a SMALL polygonOffset pulls them just in front of the wall
+            // they sit on — without it the disc z-fights the wall and vanishes.
+            // It must stay small: at -4 the offset also beat the brown gallery
+            // eave that overhangs the side clocks, so the white bled up THROUGH
+            // the brown from a raised angle. -1 clears the 0.4 m wall gap but not
+            // the ~1.8 m eave, so the eave now correctly occludes the clock top.
+            const decal = c => new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide,
+              polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+            const face = decal(0xf5f1e2);
+            const hand = decal(0x2a2620);
+            for (let i = 0; i < 4; i++) {
+              const a = i * Math.PI / 2;
+              const f = new THREE.Group();
+              f.add(new THREE.Mesh(new THREE.CircleGeometry(3.1, 24), face));
+              const hr = new THREE.Mesh(new THREE.BoxGeometry(0.5, 4.4, 0.12), hand);
+              hr.position.set(0, 1.4, 0.3); f.add(hr);
+              const mn = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.45, 0.12), hand);
+              mn.position.set(1.0, 0, 0.3); f.add(mn);
+              // 0.4 m proud of the wall — anything less loses the depth fight
+              f.position.set(Math.sin(a) * 4.9, 14.4, Math.cos(a) * 4.9);
+              f.rotation.y = a;
+              g.add(f);
+            }
+            scene.add(g);
+
+            // ---- Glockenturm ("Liesl"), the Schlossberg's second tower ----
+            // ~275 m N of the Uhrturm: a 34 m OCTAGONAL Alpine-Renaissance bell
+            // tower (built 1588). Cream faceted shaft with string courses, the
+            // signature paired belfry windows, a grey pyramidal shingle roof and
+            // a gilt finial. Added to the SAME scene/custom layer as the Uhrturm
+            // — one layer means only a few extra static draw calls, no second
+            // per-frame render pass. Octagon faceting is baked into vertex
+            // colours from a fixed light dir (same "no lights" rule as above),
+            // using flat per-face normals (toNonIndexed) for crisp facets.
+            const LIGHT = new THREE.Vector3(0.4, 0.85, 0.55).normalize();
+            const facet = (geo, hex, amb, gain) => {
+              geo = geo.toNonIndexed(); geo.computeVertexNormals();
+              const pos = geo.attributes.position, nrm = geo.attributes.normal;
+              const base = new THREE.Color(hex), out = new Float32Array(pos.count * 3), v = new THREE.Vector3();
+              for (let i = 0; i < pos.count; i++) {
+                v.set(nrm.getX(i), nrm.getY(i), nrm.getZ(i));
+                const f = Math.min(1.12, amb + gain * Math.max(0, v.dot(LIGHT)));
+                out[i * 3] = base.r * f; out[i * 3 + 1] = base.g * f; out[i * 3 + 2] = base.b * f;
+              }
+              geo.setAttribute('color', new THREE.BufferAttribute(out, 3));
+              return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true }));
+            };
+            const OCT = Math.PI / 8;                        // rotate so a flat faces south
+            const gt = new THREE.Group();
+            const gtadd = (geo, hex, y, amb, gain) => {
+              geo.rotateY(OCT);                             // align facets before baking normals
+              const mesh = facet(geo, hex, amb == null ? 0.72 : amb, gain == null ? 0.4 : gain);
+              mesh.position.y = y; gt.add(mesh); return mesh;
+            };
+            gtadd(new THREE.CylinderGeometry(5.9, 5.9, 25, 8), 0xe4dcc6, 12.5);        // shaft
+            gtadd(new THREE.CylinderGeometry(6.15, 6.3, 1.6, 8), 0xc7bea6, 0.8);       // plinth
+            gtadd(new THREE.CylinderGeometry(6.03, 6.03, 0.5, 8), 0xccc3ac, 9);        // string course
+            gtadd(new THREE.CylinderGeometry(6.03, 6.03, 0.5, 8), 0xccc3ac, 16.5);     // string course
+            gtadd(new THREE.CylinderGeometry(6.75, 6.5, 0.95, 8), 0x8f7f63, 25.45);    // cornice / eave overhang
+            gtadd(new THREE.ConeGeometry(6.5, 8.8, 8), 0x6b6b6a, 30.3, 0.58, 0.5);     // pyramidal shingle roof
+            gtadd(new THREE.CylinderGeometry(0.08, 0.08, 1.5, 6), 0xb8942e, 34.4);     // finial spike
+            const gfin = facet(new THREE.SphereGeometry(0.5, 12, 8), 0xd9b23a, 0.8, 0.4);
+            gfin.position.y = 34.1; gt.add(gfin);                                      // gilt ball
+            // paired arched belfry windows on all eight faces
+            const winMat = new THREE.MeshBasicMaterial({ color: 0x39332a, side: THREE.DoubleSide,
+              polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+            const apo = 5.9 * Math.cos(OCT);               // apothem: distance to a flat face
+            for (let i = 0; i < 8; i++) {
+              const a = i * Math.PI / 4;
+              const fg = new THREE.Group();
+              for (const dx of [-1.15, 1.15]) {
+                const wm = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 2.9), winMat);
+                wm.position.set(dx, -0.1, 0.05); fg.add(wm);
+                const arch = new THREE.Mesh(new THREE.CircleGeometry(0.475, 10, 0, Math.PI), winMat);
+                arch.position.set(dx, 1.35, 0.05); fg.add(arch);
+              }
+              fg.position.set(Math.sin(a) * apo, 21, Math.cos(a) * apo);
+              fg.rotation.y = a;
+              gt.add(fg);
+            }
+            const mcG = maplibregl.MercatorCoordinate.fromLngLat([15.4371872, 47.0759736], 0);
+            gt.position.set((mcG.x - T.x) / T.scale, 0, (mcG.y - T.y) / T.scale);
+            scene.add(gt);
+
+            // ---- Murinsel (Insel in der Mur), Acconci's floating steel island ----
+            // A ~55×23 m shell in the Mur, ~1.9 km SW. Built from its real OSM
+            // footprint extruded as a steel deck, with the signature blue glass
+            // dome on the north lobe, a low steel rim around the south
+            // amphitheatre, and two slim ramps to the banks. Local metres are
+            // (E, N) from the island centre → model (x=E, y=up, z=-N).
+            const MUR_FOOT = [[-4.2,26.4],[-5.8,26.1],[-7.9,24.9],[-9.7,23.4],[-10.9,21.4],[-11.6,19.2],[-12.3,14.1],[-12.1,8.3],[-11.7,2.8],[-11.3,-0.5],[-10.7,-3.7],[-9.6,-9.8],[-8.2,-14.2],[-6.7,-18.1],[-4.5,-22.2],[-3.0,-25.2],[-1.1,-26.7],[0.4,-27.7],[1.8,-28.1],[3.1,-28.3],[4.5,-28.0],[5.5,-27.5],[6.4,-26.6],[7.7,-24.9],[9.0,-22.8],[9.8,-19.9],[10.3,-17.0],[10.6,-13.2],[10.3,-9.5],[9.3,-4.8],[8.3,-1.8],[7.1,1.0],[5.8,3.2],[6.3,5.0],[6.6,7.7],[6.6,11.0],[5.7,15.8],[5.0,18.4],[4.3,20.2],[3.0,22.2],[1.3,24.1],[-0.5,25.3],[-1.6,25.8],[-2.5,26.1]];
+            const mi = new THREE.Group();
+            const shape = new THREE.Shape();
+            MUR_FOOT.forEach((p, i) => i ? shape.lineTo(p[0], p[1]) : shape.moveTo(p[0], p[1]));
+            shape.closePath();
+            const deckGeo = new THREE.ExtrudeGeometry(shape, { depth: 1.7, bevelEnabled: false });
+            deckGeo.rotateX(-Math.PI / 2);              // lay the footprint flat, extrude -> +y
+            mi.add(facet(deckGeo, 0x8a9199, 0.7, 0.4));  // brushed-steel deck
+            // signature blue glass dome over the north lobe
+            const dome = facet(new THREE.SphereGeometry(8.6, 22, 12, 0, Math.PI * 2, 0, Math.PI / 2), 0x5b93c4, 0.62, 0.5);
+            dome.scale.y = 0.82; dome.position.set(-3.2, 1.7, -16);
+            dome.material.transparent = true; dome.material.opacity = 0.9;
+            mi.add(dome);
+            // low steel rim ringing the south amphitheatre bowl
+            const rim = facet(new THREE.TorusGeometry(7.6, 0.7, 8, 26), 0x9aa0a6, 0.72, 0.4);
+            rim.rotation.x = Math.PI / 2; rim.position.set(-0.5, 2.1, 16);
+            mi.add(rim);
+            // two slim ramps linking the island to each bank
+            const ramp = (a, b) => {
+              const ex = b[0] - a[0], nz = b[1] - a[1], len = Math.hypot(ex, nz);
+              const box = facet(new THREE.BoxGeometry(3.4, 0.6, len), 0x9aa0a6, 0.72, 0.35);
+              box.position.set((a[0] + b[0]) / 2, 1.3, -(a[1] + b[1]) / 2);
+              box.rotation.y = Math.atan2(ex, -nz);
+              mi.add(box);
+            };
+            ramp([-11, 20], [-40, 19]);                 // to the west (Lend) bank
+            ramp([9, -22], [32, -45]);                  // to the east (Altstadt) bank
+            const mcM = maplibregl.MercatorCoordinate.fromLngLat([15.434596, 47.073166], 0);
+            mi.position.set((mcM.x - T.x) / T.scale, 0, (mcM.y - T.y) / T.scale);
+            scene.add(mi);
+
+            // ---- Herz-Jesu-Kirche: Graz's tallest church (109.6 m neo-Gothic spire) ----
+            // ~2.0 km SE. Built from its real OSM building:parts — each footprint (local
+            // metres E,N from the church centroid) extruded to its wall height, then a
+            // fan-to-apex roof: a steep spire on the 109.6 m tower, hipped caps elsewhere.
+            // Brick body, dark-slate roofs. Roof normals forced upward so the baked
+            // facet shading is correct regardless of the OSM polygon's winding.
+            const HJ_PARTS = [
+              { h:27, rh:8, p:[[6.8,16.1],[7.8,17.0],[18.6,5.6],[14.0,1.4],[7.3,-4.8],[-8.3,-19.1],[-9.2,-19.9],[-10.0,-19.1],[-11.1,-20.2],[-10.4,-21.0],[-14.7,-25.2],[-20.5,-19.7],[-25.9,-14.5],[-18.8,-7.7]] },
+              { h:20, rh:8, p:[[16.8,24.1],[13.3,27.7],[14.0,28.4],[13.0,29.6],[12.1,28.8],[10.8,30.3],[11.6,31.1],[10.4,32.1],[9.7,31.3],[8.8,32.2],[7.7,30.9],[8.5,30.2],[5.8,27.5],[2.3,24.4],[1.5,25.1],[0.4,24.1],[1.1,23.2],[0.3,22.6],[1.5,21.3],[2.4,22.0],[3.7,20.5],[3.0,19.9],[6.8,16.1],[7.8,17.0],[6.8,18.0],[7.9,19.1],[9.6,17.3]] },
+              { h:28, rh:8, p:[[7.8,17.0],[6.8,18.0],[7.9,19.1],[9.6,17.3],[17.2,9.2],[19.6,6.5],[18.6,5.6]] },
+              { h:24, rh:6, p:[[26.4,12.8],[16.8,24.1],[9.6,17.3],[17.2,9.2],[21.4,12.9],[22.1,11.7],[24.4,13.7],[25.8,12.3]] },
+              { h:27, rh:8, p:[[26.4,12.8],[27.0,13.3],[25.6,14.7],[27.8,17.0],[30.0,16.1],[30.6,17.6],[28.4,18.6],[28.5,22.0],[30.8,22.5],[30.3,24.1],[28.2,23.5],[25.9,26.0],[26.8,27.9],[25.4,28.6],[24.5,26.8],[20.6,26.7],[19.9,28.6],[18.4,28.1],[19.1,26.2],[16.8,24.1]] },
+              { h:12, rh:5, p:[[-29.0,-5.5],[-27.1,-3.9],[-25.0,-2.1],[-24.7,-1.8],[-22.5,-4.1],[-18.8,-7.7],[-25.9,-14.5],[-28.3,-11.8],[-27.9,-10.5],[-27.9,-8.5],[-30.0,-6.3]] },
+              { h:45, rh:11, p:[[-28.3,-11.8],[-27.9,-10.5],[-27.9,-8.5],[-30.0,-6.3],[-32.9,-8.7],[-33.3,-9.2],[-29.7,-13.0]] },
+              { h:109.6, rh:35, p:[[-17.6,-27.8],[-18.1,-27.3],[-16.7,-25.9],[-16.1,-26.5],[-14.7,-25.2],[-10.4,-21.0],[-11.1,-20.2],[-10.0,-19.1],[-9.2,-19.9],[-8.3,-19.1],[-7.4,-20.0],[-8.2,-20.8],[-5.7,-23.3],[-3.8,-25.3],[-2.0,-23.7],[-1.4,-23.2],[0.2,-24.9],[-1.3,-26.5],[-0.0,-27.9],[-1.6,-29.5],[-3.1,-28.2],[-7.3,-32.1],[-6.0,-33.5],[-7.6,-35.2],[-9.0,-33.8],[-10.5,-35.3],[-12.9,-32.7],[-11.3,-31.1],[-14.9,-27.7],[-16.4,-29.0]] },
+            ];
+            const hj = new THREE.Group();
+            const BRICK = 0x9c5341, SLATE = 0x484d51;
+            HJ_PARTS.forEach(part => {
+              const bodyH = Math.max(0.5, part.h - part.rh);
+              const sh = new THREE.Shape();
+              part.p.forEach((p, i) => i ? sh.lineTo(p[0], p[1]) : sh.moveTo(p[0], p[1]));
+              sh.closePath();
+              const bg = new THREE.ExtrudeGeometry(sh, { depth: bodyH, bevelEnabled: false });
+              bg.rotateX(-Math.PI / 2);
+              hj.add(facet(bg, BRICK, 0.7, 0.42));
+              if (part.rh <= 0.5) return;
+              // fan-to-apex roof, normals forced upward for correct baked shading
+              let cx = 0, cz = 0;
+              part.p.forEach(p => { cx += p[0]; cz += -p[1]; });
+              cx /= part.p.length; cz /= part.p.length;
+              const A = new THREE.Vector3(cx, part.h, cz);
+              const pos = [], col = [], base = new THREE.Color(SLATE);
+              for (let i = 0; i < part.p.length; i++) {
+                const p0 = part.p[i], p1 = part.p[(i + 1) % part.p.length];
+                const a = new THREE.Vector3(p0[0], bodyH, -p0[1]);
+                const b = new THREE.Vector3(p1[0], bodyH, -p1[1]);
+                const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(A, a)).normalize();
+                if (n.y < 0) n.negate();
+                const f = Math.min(1.12, 0.55 + 0.5 * Math.max(0, n.dot(LIGHT)));
+                pos.push(a.x, a.y, a.z, b.x, b.y, b.z, A.x, A.y, A.z);
+                for (let k = 0; k < 3; k++) col.push(base.r * f, base.g * f, base.b * f);
+              }
+              const rgeo = new THREE.BufferGeometry();
+              rgeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+              rgeo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+              hj.add(new THREE.Mesh(rgeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+            });
+            // gilt cross finial atop the great spire (its apex)
+            const sp = HJ_PARTS[HJ_PARTS.length - 1];
+            let sx = 0, sz = 0; sp.p.forEach(p => { sx += p[0]; sz += -p[1]; }); sx /= sp.p.length; sz /= sp.p.length;
+            const cross = new THREE.Group();
+            cross.add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 4, 0.5), mat(0xcaa233, 1)));
+            const crossArm = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, 0.5), mat(0xcaa233, 1));
+            crossArm.position.y = 1.1; cross.add(crossArm);
+            cross.position.set(sx, sp.h + 2, sz); hj.add(cross);
+            const mcH = maplibregl.MercatorCoordinate.fromLngLat([15.455777, 47.069640], 0);
+            hj.position.set((mcH.x - T.x) / T.scale, 0, (mcH.y - T.y) / T.scale);
+            scene.add(hj);
+
+            // ---- Kunsthaus Graz, the "Friendly Alien" ----
+            // ~2.4 km SW, on the Mur's west bank. Its OSM "Friendly Alien"
+            // building:part outline is lofted into the bulbous blue-grey acrylic
+            // skin (rings scaled toward the centroid on a sine curve → smooth
+            // pillow that hugs the real footprint), with a glass base, the
+            // attached Eisernes Haus, and the signature roof NOZZLES leaning north.
+            // smooth() keeps averaged normals so the blob shades round, not faceted.
+            const smooth = (pos, idx, hex, amb, gain) => {
+              const g = new THREE.BufferGeometry();
+              g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+              g.setIndex(idx); g.computeVertexNormals();
+              const nrm = g.attributes.normal, base = new THREE.Color(hex), col = new Float32Array(pos.length), v = new THREE.Vector3();
+              for (let i = 0; i < pos.length / 3; i++) {
+                v.set(nrm.getX(i), nrm.getY(i), nrm.getZ(i));
+                const f = Math.min(1.12, amb + gain * Math.max(0, v.dot(LIGHT)));
+                col[i * 3] = base.r * f; col[i * 3 + 1] = base.g * f; col[i * 3 + 2] = base.b * f;
+              }
+              g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+              return new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true }));
+            };
+            const BLOB = [[16.2,-23.1],[16.7,-15.1],[15.1,-17.4],[14.1,-19.3],[12.6,-20.5],[9.8,-21.0],[7.1,-21.0],[5.5,-20.3],[4.2,-19.2],[3.6,-17.7],[3.2,-14.8],[3.0,-12.2],[3.4,-9.8],[2.5,-7.8],[0.7,-6.2],[-0.6,-5.3],[-1.5,-4.7],[-3.2,-2.7],[-4.8,-1.7],[-6.1,-0.5],[-6.7,0.2],[-7.6,2.3],[-8.2,5.4],[-8.2,7.8],[-8.6,9.9],[-9.5,11.4],[-11.2,12.2],[-14.1,12.9],[-17.5,14.0],[-23.1,17.4],[-24.5,19.5],[-24.9,21.5],[-24.9,23.6],[-24.4,25.8],[-23.5,28.0],[-22.3,30.0],[-19.4,32.2],[-17.1,33.4],[-13.7,34.5],[-9.5,35.2],[-5.3,35.8],[0.9,36.1],[5.4,36.1],[11.6,35.7],[14.5,34.8],[15.4,34.1],[16.8,33.4],[18.4,31.5],[18.8,29.4],[18.3,25.7],[18.0,19.1],[18.2,8.8],[19.3,9.5],[20.3,9.5],[21.5,9.0],[22.2,8.2],[22.5,7.1],[21.4,-24.2],[21.2,-26.0],[21.1,-27.8],[20.5,-29.0],[19.4,-29.7],[18.3,-29.8],[17.4,-29.6],[16.5,-28.8],[16.2,-27.9],[16.1,-26.4]];
+            const EISEN = [[-16.1,-25.0],[-2.1,-24.2],[-2.0,-26.0],[16.1,-26.4],[16.2,-27.9],[16.5,-28.8],[17.4,-29.6],[18.3,-29.8],[19.4,-29.7],[20.5,-29.0],[21.1,-27.8],[21.2,-26.0],[24.0,-25.9],[24.9,-35.3],[6.7,-35.8],[3.1,-35.8],[-15.3,-36.1],[-16.1,-26.3]];
+            const kh = new THREE.Group();
+            const SKIN = 0x323d4c, GLASS = 0x9aa7b3;   // dark anthracite-blue acrylic + glass ground floor
+            const extrudeFoot = (foot, depth, hex, amb, gain) => {
+              const s = new THREE.Shape();
+              foot.forEach((p, i) => i ? s.lineTo(p[0], p[1]) : s.moveTo(p[0], p[1]));
+              s.closePath();
+              const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false });
+              g.rotateX(-Math.PI / 2);
+              return facet(g, hex, amb, gain);
+            };
+            kh.add(extrudeFoot(BLOB, 3.5, GLASS, 0.74, 0.34));           // glass ground floor
+            kh.add(extrudeFoot(EISEN, 10, 0xcac3b6, 0.72, 0.4));        // Eisernes Haus
+            // loft the blob footprint into a rounded skin
+            let bcx = 0, bcz = 0;
+            BLOB.forEach(p => { bcx += p[0]; bcz += -p[1]; });
+            bcx /= BLOB.length; bcz /= BLOB.length;
+            const NB = BLOB.length, NR = 7, base0 = 3, domeH = 18.5, pos = [], idx = [];
+            for (let ri = 0; ri <= NR; ri++) {
+              const t = ri / NR, sc = Math.cos(t * Math.PI / 2), y = base0 + domeH * Math.sin(t * Math.PI / 2);
+              for (let j = 0; j < NB; j++) { const p = BLOB[j]; pos.push(bcx + (p[0] - bcx) * sc, y, bcz + ((-p[1]) - bcz) * sc); }
+            }
+            for (let ri = 0; ri < NR; ri++) for (let j = 0; j < NB; j++) {
+              const a = ri * NB + j, b = ri * NB + (j + 1) % NB, c = (ri + 1) * NB + (j + 1) % NB, dd = (ri + 1) * NB + j;
+              idx.push(a, b, dd, b, c, dd);
+            }
+            kh.add(smooth(pos, idx, SKIN, 0.5, 0.5));
+            // signature roof nozzles (snorkel skylights) leaning north
+            [[-14,20,3.6],[-8,26,4.2],[-2,29,3.2],[4,28,3.8],[10,24,3],[14,15,3.4],[12,6,3.6],[4,0,4.2],[-4,4,3.8],[-12,10,3.2],[0,14,4.4],[8,11,3.6],[-8,15,3.8]].forEach(nz => {
+              const E = nz[0], Nn = nz[1], len = nz[2];
+              const d = Math.hypot(E - bcx, (-Nn) - bcz);
+              const by = base0 + domeH * Math.sqrt(Math.max(0.12, 1 - (d / 27) * (d / 27)));
+              const ng = new THREE.Group();
+              const cyl = facet(new THREE.CylinderGeometry(1.35, 1.35, len, 12), SKIN, 0.5, 0.55);
+              cyl.position.y = len / 2; ng.add(cyl);
+              const cap = facet(new THREE.SphereGeometry(1.35, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), SKIN, 0.6, 0.5);
+              cap.position.y = len; ng.add(cap);
+              ng.position.set(E, by - 1, -Nn); ng.rotation.x = -0.6;
+              kh.add(ng);
+            });
+            const mcK = maplibregl.MercatorCoordinate.fromLngLat([15.434015, 47.0712985], 0);
+            kh.position.set((mcK.x - T.x) / T.scale, 0, (mcK.y - T.y) / T.scale);
+            scene.add(kh);
+
+            // ---- Mausoleum of Ferdinand II (Katharinenkirche & Mausoleum) ----
+            // ~1.7 km SE, by the Dom. Cream Mannerist body with THREE green-copper
+            // domes (a wide oval mausoleum dome, a mid cupola, and the 34 m tower)
+            // from its real OSM dome-parts. smoothG() bakes vertex colours on a
+            // geometry's own smooth normals (rounded domes, not faceted).
+            const smoothG = (geo, hex, amb, gain) => {
+              geo.computeVertexNormals();
+              const nrm = geo.attributes.normal, pos = geo.attributes.position, base = new THREE.Color(hex), col = new Float32Array(pos.count * 3), v = new THREE.Vector3();
+              for (let i = 0; i < pos.count; i++) {
+                v.set(nrm.getX(i), nrm.getY(i), nrm.getZ(i));
+                const f = Math.min(1.12, amb + gain * Math.max(0, v.dot(LIGHT)));
+                col[i * 3] = base.r * f; col[i * 3 + 1] = base.g * f; col[i * 3 + 2] = base.b * f;
+              }
+              geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+              return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true }));
+            };
+            const MZ_BODY = [[-18.9,12.1],[-18.8,8.7],[-18.7,5.9],[-18.6,2.4],[-18.6,-1.2],[-17.6,-1.2],[-17.6,-1.8],[-18.3,-1.8],[-18.3,-2.9],[-14.6,-2.6],[-14.6,-1.2],[-13.2,-1.2],[-13.2,-0.2],[-4.8,0.2],[-4.7,-2.0],[-5.9,-2.0],[-5.7,-6.8],[-6.3,-9.5],[-6.0,-12.0],[-4.9,-14.3],[-3.1,-16.1],[-0.9,-17.2],[1.6,-17.8],[4.0,-17.2],[6.2,-16.1],[8.0,-14.3],[8.6,-12.9],[9.0,-12.1],[9.3,-10.0],[9.2,-8.6],[8.8,-7.1],[8.5,-6.7],[8.5,-5.1],[8.5,-3.3],[11.1,-2.7],[12.6,-2.2],[13.7,-1.5],[14.6,-0.5],[15.4,0.7],[16.0,1.9],[16.8,3.5],[17.9,4.5],[18.6,5.7],[18.9,7.1],[18.8,8.5],[18.5,9.2],[18.2,9.9],[17.1,11.0],[16.3,11.4],[15.4,12.8],[14.6,13.8],[13.3,15.0],[11.8,15.9],[9.8,16.8],[8.0,17.2],[6.3,17.4],[6.0,17.8],[-5.9,17.0],[-5.7,11.9],[-13.9,11.8],[-13.9,12.7],[-16.3,12.6],[-16.3,13.1],[-17.9,13.1],[-18.0,12.6],[-18.5,12.5],[-18.5,12.1]];
+            const mz = new THREE.Group();
+            const CREAM = 0xe9dcc0, COPPER = 0x44a08d;
+            mz.add(extrudeFoot(MZ_BODY, 15, CREAM, 0.72, 0.4));
+            [{ r:7.7, e:2.5, n:-10.0, drumTop:15, cap:4.5 },      // wide oval mausoleum dome on the roof
+             { r:5.0, e:0.4, n:6.7,   drumTop:20, cap:6 },        // mid cupola on a low drum
+             { r:4.5, e:14.7, n:7.6,  drumTop:27, cap:7 }         // 34 m tower cupola
+            ].forEach(dd => {
+              if (dd.drumTop > 15.2) {
+                const drum = facet(new THREE.CylinderGeometry(dd.r, dd.r, dd.drumTop, 20), CREAM, 0.72, 0.4);
+                drum.position.set(dd.e, dd.drumTop / 2, -dd.n); mz.add(drum);
+              }
+              const dome = smoothG(new THREE.SphereGeometry(dd.r * 1.03, 22, 12, 0, Math.PI * 2, 0, Math.PI / 2), COPPER, 0.5, 0.5);
+              dome.scale.y = dd.cap / (dd.r * 1.03); dome.position.set(dd.e, dd.drumTop, -dd.n); mz.add(dome);
+              const fin = facet(new THREE.SphereGeometry(0.55, 10, 8), 0xcaa233, 1, 0.1);
+              fin.position.set(dd.e, dd.drumTop + dd.cap + 0.3, -dd.n); mz.add(fin);
+            });
+            const mcMz = maplibregl.MercatorCoordinate.fromLngLat([15.4426221, 47.0716735], 0);
+            mz.position.set((mcMz.x - T.x) / T.scale, 0, (mcMz.y - T.y) / T.scale);
+            scene.add(mz);
+
+            // ---- Grazer Rathaus, the civic palace on Hauptplatz ----
+            // ~1.4 km SE. OSM has only the plain 4-level footprint (beige, grey
+            // gabled roof), so the iconic central clock tower + flanking corner
+            // cupolas are added procedurally on the Hauptplatz (N) frontage.
+            const RH_POLY = [[9.5,19.8],[14.4,23.8],[13.5,24.7],[23.3,30.9],[10.0,48.1],[9.4,47.5],[-5.5,34.2],[-9.2,37.7],[-13.0,34.5],[-14.4,33.3],[-16.1,31.8],[-20.5,28.1],[-17.1,23.8],[-31.2,12.0],[-32.4,10.4],[-32.3,9.0],[-35.1,-0.4],[-34.8,-4.4],[-34.5,-9.5],[-20.2,-35.0],[-6.6,-59.6],[-3.9,-60.2],[-2.1,-60.4],[40.0,-21.3],[42.1,-19.3],[32.8,-10.0],[30.7,-11.9],[22.0,-20.2],[21.1,-18.9],[17.5,-14.4],[5.1,-24.0],[6.5,-25.8],[10.8,-31.3],[3.6,-36.8],[-4.5,-26.2],[-5.4,-24.9],[9.9,-14.0],[4.5,-6.5],[19.0,4.2],[16.3,7.2],[10.5,2.6],[6.5,6.9],[-13.5,-7.7],[-14.7,-6.4],[-16.2,-4.8],[-2.3,6.5],[-8.0,13.4],[-0.7,19.2],[5.5,24.3]];
+            const rh = new THREE.Group();
+            const BEIGE = 0xdccdae, RGREY = 0x8a8a8a;
+            rh.add(extrudeFoot(RH_POLY, 16, BEIGE, 0.72, 0.42));       // 4-level body
+            const rRoof = extrudeFoot(RH_POLY, 3.6, RGREY, 0.6, 0.45); // grey roof band on top
+            rRoof.position.y = 16; rh.add(rRoof);
+            const placeBox = (w, h, hex, E, N) => {
+              const box = facet(new THREE.BoxGeometry(w, h, w), hex, 0.72, 0.42);
+              box.position.set(E, h / 2, -N); rh.add(box); return box;
+            };
+            // thin corner turrets with grey cupolas, flanking the tower
+            [[-16, 37], [20, 43]].forEach(([E, N]) => {
+              placeBox(4.6, 26, BEIGE, E, N);
+              const cup = smoothG(new THREE.SphereGeometry(3, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), RGREY, 0.55, 0.5);
+              cup.scale.y = 4 / 3; cup.position.set(E, 26, -N); rh.add(cup);
+              const f = facet(new THREE.SphereGeometry(0.4, 8, 6), 0xcaa233, 1, 0.1);
+              f.position.set(E, 30.3, -N); rh.add(f);
+            });
+            // dominant central clock tower on the Hauptplatz frontage
+            const TE = 2, TN = 41;
+            placeBox(9.5, 36, BEIGE, TE, TN);                                        // shaft 0→36
+            const mans = facet(new THREE.CylinderGeometry(3.2, 7, 8, 4), RGREY, 0.6, 0.5);
+            mans.rotation.y = Math.PI / 4; mans.position.set(TE, 40, -TN); rh.add(mans);   // grey mansard 36→44
+            placeBox(5, 3, BEIGE, TE, TN).position.y = 45.5;                         // lantern 44→47
+            const spire = facet(new THREE.ConeGeometry(3.4, 5, 4), RGREY, 0.6, 0.5);
+            spire.rotation.y = Math.PI / 4; spire.position.set(TE, 49.5, -TN); rh.add(spire);  // spirelet 47→52
+            const goldTip = facet(new THREE.SphereGeometry(0.6, 10, 8), 0xcaa233, 1, 0.1);
+            goldTip.position.set(TE, 52.6, -TN); rh.add(goldTip);
+            // clock face on the tower's north side (toward Hauptplatz)
+            const dmat = c => new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+            const clk = new THREE.Group();
+            clk.add(new THREE.Mesh(new THREE.CircleGeometry(2.3, 20), dmat(0xf2ede0)));
+            const chh = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.5, 0.1), dmat(0x2a2620)); chh.position.set(0, 0.55, 0.16); clk.add(chh);
+            const cmh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.32, 0.1), dmat(0x2a2620)); cmh.position.set(0.45, 0, 0.16); clk.add(cmh);
+            clk.position.set(TE, 27, -TN - 4.85); clk.rotation.y = Math.PI; rh.add(clk);
+            const mcR = maplibregl.MercatorCoordinate.fromLngLat([15.4386227, 47.0704186], 0);
+            rh.position.set((mcR.x - T.x) / T.scale, 0, (mcR.y - T.y) / T.scale);
+            scene.add(rh);
+
+            // ---- Mariahilferkirche: the twin-tower baroque church (Lend) ----
+            // ~2.5 km SW, west bank. OSM has only the footprint, so the signature
+            // twin baroque towers (welsche Hauben / onion domes) are added on the
+            // east facade that faces Mariahilferplatz. Onion domes via LatheGeometry.
+            const MH_POLY = [[-14.6,-14.0],[-20.9,-15.8],[-23.6,-3.8],[-20.6,-2.7],[-18.1,-2.0],[-18.8,1.7],[-16.9,3.6],[-17.9,7.6],[-13.6,8.9],[-12.2,4.8],[-10.6,3.3],[-5.8,4.9],[-6.3,7.1],[-6.2,9.9],[-5.1,11.4],[-1.3,12.8],[0.5,11.8],[1.6,8.1],[6.6,9.7],[13.2,9.6],[14.5,8.8],[14.9,5.6],[15.9,5.9],[16.4,1.8],[15.9,1.4],[16.7,-2.0],[17.5,-1.9],[18.1,-4.2],[17.8,-5.1],[18.4,-7.5],[18.8,-9.2],[18.0,-10.8],[14.9,-11.6],[1.0,-15.4],[-13.6,-18.9]];
+            const mh = new THREE.Group();
+            const MCREAM = 0xece0c8, MROOF = 0xa06a4e, LEAD = 0x6f6a63;
+            mh.add(extrudeFoot(MH_POLY, 13, MCREAM, 0.72, 0.42));
+            // hipped tile roof (fan-to-apex, upward normals)
+            (function () {
+              let cx = 0, cz = 0; MH_POLY.forEach(p => { cx += p[0]; cz += -p[1]; }); cx /= MH_POLY.length; cz /= MH_POLY.length;
+              const A = new THREE.Vector3(cx, 19, cz), pos = [], col = [], base = new THREE.Color(MROOF);
+              for (let i = 0; i < MH_POLY.length; i++) {
+                const p0 = MH_POLY[i], p1 = MH_POLY[(i + 1) % MH_POLY.length];
+                const a = new THREE.Vector3(p0[0], 13, -p0[1]), b = new THREE.Vector3(p1[0], 13, -p1[1]);
+                const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(A, a)).normalize(); if (n.y < 0) n.negate();
+                const f = Math.min(1.12, 0.55 + 0.5 * Math.max(0, n.dot(LIGHT)));
+                pos.push(a.x, a.y, a.z, b.x, b.y, b.z, A.x, A.y, A.z); for (let k = 0; k < 3; k++) col.push(base.r * f, base.g * f, base.b * f);
+              }
+              const rg = new THREE.BufferGeometry();
+              rg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+              rg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+              mh.add(new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+            })();
+            // twin towers flanking the east (Mariahilferplatz) facade
+            const onionPts = [[0.2, 0], [3.4, 0.6], [3.9, 2.6], [3.4, 4.6], [2.2, 6.3], [1.0, 7.7], [0.4, 9.0], [0, 10]].map(p => new THREE.Vector2(p[0], p[1]));
+            const mhTower = (E, N) => {
+              const box = facet(new THREE.BoxGeometry(6, 28, 6), MCREAM, 0.72, 0.42);
+              box.position.set(E, 14, -N); mh.add(box);
+              const cor = facet(new THREE.BoxGeometry(7, 1.3, 7), LEAD, 0.6, 0.45);
+              cor.position.set(E, 28.4, -N); mh.add(cor);
+              const dome = smoothG(new THREE.LatheGeometry(onionPts, 20), LEAD, 0.5, 0.5);
+              dome.position.set(E, 29, -N); mh.add(dome);
+              const fin = facet(new THREE.SphereGeometry(0.5, 10, 8), 0xcaa233, 1, 0.1);
+              fin.position.set(E, 39.4, -N); mh.add(fin);
+            };
+            mhTower(15.3, 4.5);    // north tower
+            mhTower(17.9, -7.5);   // south tower
+            const mcMh = maplibregl.MercatorCoordinate.fromLngLat([15.4330619, 47.0728242], 0);
+            mh.position.set((mcMh.x - T.x) / T.scale, 0, (mcMh.y - T.y) / T.scale);
+            scene.add(mh);
+
+            // ---- Grazer Dom (cathedral), beside the Mausoleum ----
+            // ~1.7 km SE. Footprint-only in OSM; the single west-front tower with
+            // its weathered-copper baroque cupola is added procedurally (the
+            // LatheGeometry onion recipe), pale gothic body + red-tile roof.
+            const DOM_POLY = [[-30.0,10.3],[-28.0,10.4],[-27.9,9.6],[-22.7,10.0],[-22.7,10.8],[-21.3,10.9],[-21.2,10.1],[-16.9,10.6],[-15.7,10.7],[-15.9,15.8],[-13.8,15.9],[-13.9,17.1],[-9.9,17.3],[-10.0,16.2],[-0.6,16.9],[-0.4,12.3],[6.9,12.6],[7.3,9.6],[10.3,10.0],[10.1,11.1],[11.7,11.1],[11.8,10.0],[14.8,10.1],[14.6,11.4],[16.2,11.4],[16.2,10.4],[19.2,10.4],[19.6,11.6],[20.9,11.1],[20.8,9.6],[22.9,7.4],[23.2,4.4],[26.2,4.5],[27.0,6.3],[28.3,5.9],[27.7,3.9],[30.4,1.9],[32.1,2.6],[32.7,1.2],[31.1,0.4],[31.4,-3.2],[33.1,-3.8],[32.7,-5.2],[30.8,-4.6],[28.5,-7.0],[29.3,-9.7],[30.1,-14.8],[29.2,-15.0],[12.1,-17.5],[12.6,-20.1],[1.7,-21.7],[1.7,-23.9],[-5.0,-24.5],[-5.1,-25.6],[-9.0,-25.8],[-13.0,-26.0],[-14.1,-19.7],[-16.7,-19.9],[-19.2,-20.1],[-23.2,-20.3],[-27.8,-20.5],[-28.5,-11.7],[-29.3,-11.8],[-29.3,-10.3],[-28.5,-10.3],[-28.6,-9.1],[-29.1,-3.1],[-29.2,-0.9],[-29.3,-0.4],[-30.1,-0.3],[-30.2,1.1],[-29.3,1.1]];
+            const dom = new THREE.Group();
+            const DCREAM = 0xe8e0cd, DTILE = 0x99553f, DCOP = 0x5e8a7a;
+            dom.add(extrudeFoot(DOM_POLY, 14, DCREAM, 0.72, 0.42));
+            (function () {   // steep red-tile roof (fan-to-apex over the nave)
+              let cx = 0, cz = 0; DOM_POLY.forEach(p => { cx += p[0]; cz += -p[1]; }); cx /= DOM_POLY.length; cz /= DOM_POLY.length;
+              const A = new THREE.Vector3(cx, 22, cz), pos = [], col = [], base = new THREE.Color(DTILE);
+              for (let i = 0; i < DOM_POLY.length; i++) {
+                const p0 = DOM_POLY[i], p1 = DOM_POLY[(i + 1) % DOM_POLY.length];
+                const a = new THREE.Vector3(p0[0], 14, -p0[1]), b = new THREE.Vector3(p1[0], 14, -p1[1]);
+                const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(A, a)).normalize(); if (n.y < 0) n.negate();
+                const f = Math.min(1.12, 0.55 + 0.5 * Math.max(0, n.dot(LIGHT)));
+                pos.push(a.x, a.y, a.z, b.x, b.y, b.z, A.x, A.y, A.z); for (let k = 0; k < 3; k++) col.push(base.r * f, base.g * f, base.b * f);
+              }
+              const rg = new THREE.BufferGeometry();
+              rg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+              rg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+              dom.add(new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+            })();
+            // single west-front tower with copper baroque cupola
+            const dt = facet(new THREE.BoxGeometry(9, 34, 9), DCREAM, 0.72, 0.42);
+            dt.position.set(-25, 17, 5); dom.add(dt);        // west edge, centred on the facade
+            const dCor = facet(new THREE.BoxGeometry(10, 1.4, 10), DCOP, 0.6, 0.45);
+            dCor.position.set(-25, 34.7, 5); dom.add(dCor);
+            const dOnion = [[0.25,0],[4.4,0.9],[5.0,3.2],[4.2,5.6],[2.6,7.6],[1.2,9.2],[0.5,10.8],[0,12]].map(p => new THREE.Vector2(p[0], p[1]));
+            const dCup = smoothG(new THREE.LatheGeometry(dOnion, 20), DCOP, 0.5, 0.5);
+            dCup.position.set(-25, 35.4, 5); dom.add(dCup);
+            const dFin = facet(new THREE.SphereGeometry(0.55, 10, 8), 0xcaa233, 1, 0.1);
+            dFin.position.set(-25, 47.9, 5); dom.add(dFin);
+            const mcD = maplibregl.MercatorCoordinate.fromLngLat([15.4423443, 47.0720132], 0);
+            dom.position.set((mcD.x - T.x) / T.scale, 0, (mcD.y - T.y) / T.scale);
+            scene.add(dom);
+
+            // ---- Franziskanerkirche: the slim old-town tower by the Mur ----
+            // ~1.7 km SW of the Uhrturm origin, at Franziskanerplatz (east of the
+            // church, so the tower goes on the east/choir end). Footprint-only in
+            // OSM: pale body + tile roof + slim white tower with steep slate helm.
+            const FR_POLY = [[-41.5,4.6],[-38.2,4.4],[-34.0,4.1],[-31.5,4.0],[-31.5,3.5],[-31.8,-5.6],[-30.9,-10.3],[-29.1,-10.9],[-26.8,-11.1],[-25.2,-9.9],[-25.1,-8.7],[-22.8,-8.3],[-10.5,-6.0],[-5.0,-7.2],[-4.2,-3.5],[0.2,-4.5],[-0.3,-6.8],[1.1,-7.1],[1.6,-4.8],[4.9,-5.6],[4.4,-7.9],[5.8,-8.2],[6.3,-6.0],[9.7,-6.7],[9.3,-8.6],[10.6,-8.9],[11.0,-7.0],[14.4,-7.7],[14.0,-9.6],[15.2,-9.9],[15.6,-8.0],[18.5,-8.7],[19.1,-10.4],[20.5,-10.0],[19.9,-8.7],[23.2,-6.3],[24.9,-7.7],[25.6,-6.7],[24.0,-5.4],[24.6,-1.5],[26.7,-1.7],[26.8,-0.7],[24.8,-0.5],[22.3,3.2],[23.7,4.1],[23.2,4.9],[21.7,3.9],[18.5,4.6],[18.9,6.2],[17.7,6.5],[17.3,4.8],[13.7,5.6],[14.1,7.4],[13.0,7.7],[12.6,5.8],[9.0,6.6],[9.4,8.5],[8.2,8.7],[7.8,6.9],[4.4,7.6],[4.8,9.5],[3.7,9.8],[3.2,7.8],[-1.4,8.8],[-1.0,10.7],[-24.4,14.8],[-30.5,15.8],[-31.0,12.5],[-33.1,12.8],[-36.9,13.2],[-40.7,13.6],[-41.1,9.0]];
+            const fr = new THREE.Group();
+            const FCREAM = 0xefe8d6, FTILE = 0x9a5a44, FSLATE = 0x565b60;
+            fr.add(extrudeFoot(FR_POLY, 12, FCREAM, 0.72, 0.42));
+            (function () {   // tile roof, fan-to-apex
+              let cx = 0, cz = 0; FR_POLY.forEach(p => { cx += p[0]; cz += -p[1]; }); cx /= FR_POLY.length; cz /= FR_POLY.length;
+              const A = new THREE.Vector3(cx, 18, cz), pos = [], col = [], base = new THREE.Color(FTILE);
+              for (let i = 0; i < FR_POLY.length; i++) {
+                const p0 = FR_POLY[i], p1 = FR_POLY[(i + 1) % FR_POLY.length];
+                const a = new THREE.Vector3(p0[0], 12, -p0[1]), b = new THREE.Vector3(p1[0], 12, -p1[1]);
+                const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(A, a)).normalize(); if (n.y < 0) n.negate();
+                const f = Math.min(1.12, 0.55 + 0.5 * Math.max(0, n.dot(LIGHT)));
+                pos.push(a.x, a.y, a.z, b.x, b.y, b.z, A.x, A.y, A.z); for (let k = 0; k < 3; k++) col.push(base.r * f, base.g * f, base.b * f);
+              }
+              const rg = new THREE.BufferGeometry();
+              rg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+              rg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+              fr.add(new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+            })();
+            const ft = facet(new THREE.BoxGeometry(7, 30, 7), FCREAM, 0.72, 0.42);
+            ft.position.set(21, 15, 2); fr.add(ft);
+            const fHelm = facet(new THREE.ConeGeometry(5, 16, 8), FSLATE, 0.55, 0.5);
+            fHelm.position.set(21, 38, 2); fr.add(fHelm);
+            const fFin = facet(new THREE.SphereGeometry(0.5, 10, 8), 0xcaa233, 1, 0.1);
+            fFin.position.set(21, 46.4, 2); fr.add(fFin);
+            const mcF = maplibregl.MercatorCoordinate.fromLngLat([15.4365415, 47.0706718], 0);
+            fr.position.set((mcF.x - T.x) / T.scale, 0, (mcF.y - T.y) / T.scale);
+            scene.add(fr);
+
+            // ---- Grazer Opernhaus, the neo-baroque opera on the Ring ----
+            // ~2.3 km SE. OSM: footprint + colours only (#fffacd walls, #800000
+            // mansard). Long axis runs NW->SE: auditorium + entrance NW, the tall
+            // Bühnenturm (stage tower) at the SE rear — massed procedurally.
+            const OP_POLY = [[-7.5,35.5],[-13.0,27.5],[-18.6,31.2],[-21.0,27.9],[-22.4,28.8],[-25.2,30.6],[-30.5,23.4],[-34.7,16.9],[-31.1,14.4],[-29.8,13.1],[-31.7,10.7],[-26.5,6.4],[-32.2,-1.3],[-21.0,-9.9],[-19.1,-7.3],[-2.4,-18.3],[-4.2,-20.4],[-2.1,-22.4],[-2.3,-23.9],[3.4,-27.7],[5.1,-27.2],[7.0,-28.7],[7.7,-27.6],[11.5,-30.2],[14.0,-31.8],[24.7,-38.3],[31.4,-28.5],[33.4,-29.3],[42.7,-14.9],[41.1,-13.3],[47.9,-3.4],[31.7,7.4],[32.5,8.9],[20.8,17.0],[19.6,15.2],[3.6,26.1],[4.7,27.9]];
+            const op = new THREE.Group();
+            const OCREAM = 0xf3ecc9, OMAROON = 0x7e2a2a;
+            op.add(extrudeFoot(OP_POLY, 14, OCREAM, 0.72, 0.42));
+            const opRoof = extrudeFoot(OP_POLY, 3.5, OMAROON, 0.58, 0.45);   // maroon mansard band
+            opRoof.position.y = 14; op.add(opRoof);
+            // Bühnenturm: tall block over the SE end, aligned to the long axis
+            (function () {
+              const a = [14, -10], bpt = [36, -26];
+              const ex = bpt[0] - a[0], nz = bpt[1] - a[1], len = Math.hypot(ex, nz);
+              const bx = facet(new THREE.BoxGeometry(21, 27, len), OCREAM, 0.72, 0.42);
+              bx.position.set((a[0] + bpt[0]) / 2, 13.5, -(a[1] + bpt[1]) / 2);
+              bx.rotation.y = Math.atan2(ex, -nz);
+              op.add(bx);
+              const cap = facet(new THREE.BoxGeometry(22, 2.2, len + 1), OMAROON, 0.58, 0.45);
+              cap.position.set((a[0] + bpt[0]) / 2, 28.1, -(a[1] + bpt[1]) / 2);
+              cap.rotation.y = Math.atan2(ex, -nz);
+              op.add(cap);
+            })();
+            // shallow copper-tinged dome over the auditorium (NW section)
+            const opDome = smoothG(new THREE.SphereGeometry(11, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), 0x7ba08d, 0.62, 0.5);
+            opDome.scale.y = 0.38; opDome.position.set(-11, 17.5, -12); op.add(opDome);
+            const opFin = facet(new THREE.SphereGeometry(0.5, 8, 6), 0xcaa233, 1, 0.1);
+            opFin.position.set(-11, 22.2, -12); op.add(opFin);
+            const mcO = maplibregl.MercatorCoordinate.fromLngLat([15.4455959, 47.0690169], 0);
+            op.position.set((mcO.x - T.x) / T.scale, 0, (mcO.y - T.y) / T.scale);
+            scene.add(op);
+
+            // ---- Stadtpfarrkirche zum Heiligen Blut, on Herrengasse ----
+            // ~1.5 km SE. Footprint-only in OSM; nave axis runs SW->NE with the
+            // facade + tower at the SW end toward Herrengasse. Signature: the
+            // baroque double-onion LANTERN helm — onion, open lantern, onion cap.
+            const SP_POLY = [[17.4,22.1],[16.3,22.4],[15.9,23.5],[9.3,26.4],[8.6,25.8],[7.4,25.8],[-0.7,18.4],[-6.7,12.5],[-5.9,11.7],[-9.5,8.4],[-10.2,9.0],[-10.6,8.5],[-11.1,8.1],[-10.4,7.7],[-13.7,4.6],[-14.3,5.1],[-15.1,4.3],[-14.6,3.9],[-17.8,0.8],[-18.4,1.3],[-19.3,0.4],[-18.9,-0.0],[-20.6,-1.6],[-21.9,-2.9],[-22.8,-2.0],[-23.7,-2.9],[-23.2,-3.5],[-24.6,-4.7],[-26.0,-6.1],[-27.2,-6.1],[-28.1,-7.1],[-24.5,-11.2],[-24.0,-13.4],[-21.8,-14.3],[-20.5,-15.6],[-19.4,-16.8],[-18.8,-19.3],[-17.2,-19.5],[-14.5,-22.4],[-15.0,-22.8],[-11.2,-26.6],[-11.3,-27.4],[-0.5,-17.8],[0.5,-18.6],[3.2,-16.3],[3.6,-17.0],[4.6,-16.3],[4.1,-15.6],[6.1,-13.8],[6.8,-14.5],[7.5,-13.9],[6.8,-13.2],[8.6,-11.6],[9.2,-12.2],[10.1,-11.5],[9.4,-10.8],[11.1,-9.4],[13.0,-8.1],[15.3,-6.1],[16.8,-5.1],[18.6,-3.3],[19.2,-1.3],[19.0,1.2],[18.5,2.0],[18.0,2.9],[17.2,3.3],[15.1,3.5],[14.9,5.8],[15.3,6.6],[18.0,8.1],[18.1,9.5],[19.8,10.5],[20.4,13.4],[19.3,13.9],[19.3,17.1],[20.4,17.4],[20.2,18.0],[20.0,18.7],[18.9,18.3],[17.9,19.3],[16.7,20.5]];
+            const spk = new THREE.Group();
+            const SPCREAM = 0xefe6cf, SPTILE = 0x9a5a44, SPLEAD = 0x5e7a72;
+            spk.add(extrudeFoot(SP_POLY, 13, SPCREAM, 0.72, 0.42));
+            (function () {   // tile roof, fan-to-apex
+              let cx = 0, cz = 0; SP_POLY.forEach(p => { cx += p[0]; cz += -p[1]; }); cx /= SP_POLY.length; cz /= SP_POLY.length;
+              const A = new THREE.Vector3(cx, 19, cz), pos = [], col = [], base = new THREE.Color(SPTILE);
+              for (let i = 0; i < SP_POLY.length; i++) {
+                const p0 = SP_POLY[i], p1 = SP_POLY[(i + 1) % SP_POLY.length];
+                const a = new THREE.Vector3(p0[0], 13, -p0[1]), b = new THREE.Vector3(p1[0], 13, -p1[1]);
+                const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(A, a)).normalize(); if (n.y < 0) n.negate();
+                const f = Math.min(1.12, 0.55 + 0.5 * Math.max(0, n.dot(LIGHT)));
+                pos.push(a.x, a.y, a.z, b.x, b.y, b.z, A.x, A.y, A.z); for (let k = 0; k < 3; k++) col.push(base.r * f, base.g * f, base.b * f);
+              }
+              const rg = new THREE.BufferGeometry();
+              rg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+              rg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+              spk.add(new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+            })();
+            // SW tower: shaft aligned to the nave axis, then onion + lantern + cap
+            (function () {
+              const E = -21, N = -8, rotY = Math.atan2(40, -23);   // axis (E40,N23)
+              const shaft = facet(new THREE.BoxGeometry(8, 34, 8), SPCREAM, 0.72, 0.42);
+              shaft.position.set(E, 17, -N); shaft.rotation.y = rotY; spk.add(shaft);
+              const cor = facet(new THREE.BoxGeometry(9, 1.2, 9), SPLEAD, 0.6, 0.45);
+              cor.position.set(E, 34.6, -N); cor.rotation.y = rotY; spk.add(cor);
+              const onion = [[0.25,0],[3.9,0.8],[4.4,2.8],[3.7,4.9],[2.2,6.6],[1.0,7.8],[0.5,8.6],[0.3,9]].map(p => new THREE.Vector2(p[0], p[1]));
+              const dome = smoothG(new THREE.LatheGeometry(onion, 18), SPLEAD, 0.5, 0.5);
+              dome.position.set(E, 35.2, -N); spk.add(dome);
+              const lant = facet(new THREE.CylinderGeometry(1.5, 1.5, 3.6, 10), SPCREAM, 0.75, 0.4);
+              lant.position.set(E, 46, -N); spk.add(lant);
+              const cap = [[0.15,0],[1.9,0.5],[2.1,1.6],[1.5,2.8],[0.7,3.9],[0.2,4.8],[0,5.4]].map(p => new THREE.Vector2(p[0], p[1]));
+              const capM = smoothG(new THREE.LatheGeometry(cap, 16), SPLEAD, 0.5, 0.5);
+              capM.position.set(E, 47.8, -N); spk.add(capM);
+              const fin = facet(new THREE.SphereGeometry(0.45, 8, 6), 0xcaa233, 1, 0.1);
+              fin.position.set(E, 53.6, -N); spk.add(fin);
+            })();
+            const mcSp = maplibregl.MercatorCoordinate.fromLngLat([15.4412014, 47.0694177], 0);
+            spk.position.set((mcSp.x - T.x) / T.scale, 0, (mcSp.y - T.y) / T.scale);
+            scene.add(spk);
+
+            // ---- Leechkirche: Graz's oldest church (13th-c. Gothic, by the Uni) ----
+            // ~2.6 km E. Small hall church: low pale walls under a STEEP Gothic
+            // tile roof, slim west tower with a pointed octagonal spire.
+            const LK_POLY = [[7.8,14.6],[-1.4,11.6],[-0.1,7.7],[-2.0,7.1],[-1.5,5.6],[-5.9,4.2],[-6.3,5.5],[-7.4,5.2],[-7.0,3.9],[-11.8,2.4],[-12.5,2.1],[-14.5,3.3],[-15.2,2.1],[-14.2,1.5],[-15.9,0.9],[-14.6,-2.7],[-14.1,-4.0],[-13.6,-5.4],[-12.4,-9.1],[-10.7,-8.5],[-11.4,-9.8],[-10.4,-10.3],[-9.2,-8.0],[-8.2,-7.7],[-3.6,-6.3],[-3.2,-7.8],[-2.1,-7.5],[-2.6,-6.1],[2.1,-4.7],[2.6,-6.3],[3.8,-5.9],[3.3,-4.5],[7.8,-3.1],[8.3,-4.5],[9.3,-4.2],[8.8,-2.7],[11.6,-1.8],[12.5,-3.1],[13.3,-2.5],[12.4,-1.3],[13.8,2.0],[15.2,1.8],[15.3,2.7],[13.7,2.9],[12.8,5.9],[14.0,6.9],[13.4,7.7],[12.1,6.8],[9.7,8.7]];
+            const lk = new THREE.Group();
+            const LKPALE = 0xe7e2d4, LKTILE = 0x96543e, LKSLATE = 0x53585d;
+            lk.add(extrudeFoot(LK_POLY, 9, LKPALE, 0.72, 0.42));
+            (function () {   // steep Gothic roof, fan-to-apex
+              let cx = 0, cz = 0; LK_POLY.forEach(p => { cx += p[0]; cz += -p[1]; }); cx /= LK_POLY.length; cz /= LK_POLY.length;
+              const A = new THREE.Vector3(cx, 19, cz), pos = [], col = [], base = new THREE.Color(LKTILE);
+              for (let i = 0; i < LK_POLY.length; i++) {
+                const p0 = LK_POLY[i], p1 = LK_POLY[(i + 1) % LK_POLY.length];
+                const a = new THREE.Vector3(p0[0], 9, -p0[1]), b = new THREE.Vector3(p1[0], 9, -p1[1]);
+                const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(A, a)).normalize(); if (n.y < 0) n.negate();
+                const f = Math.min(1.12, 0.55 + 0.5 * Math.max(0, n.dot(LIGHT)));
+                pos.push(a.x, a.y, a.z, b.x, b.y, b.z, A.x, A.y, A.z); for (let k = 0; k < 3; k++) col.push(base.r * f, base.g * f, base.b * f);
+              }
+              const rg = new THREE.BufferGeometry();
+              rg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+              rg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+              lk.add(new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+            })();
+            const lkT = facet(new THREE.BoxGeometry(4.6, 21, 4.6), LKPALE, 0.72, 0.42);
+            lkT.position.set(-11.5, 10.5, 1); lk.add(lkT);
+            const lkSpire = facet(new THREE.ConeGeometry(3.3, 12, 8), LKSLATE, 0.55, 0.5);
+            lkSpire.position.set(-11.5, 27, 1); lk.add(lkSpire);
+            const lkFin = facet(new THREE.SphereGeometry(0.4, 8, 6), 0xcaa233, 1, 0.1);
+            lkFin.position.set(-11.5, 33.4, 1); lk.add(lkFin);
+            const mcLk = maplibregl.MercatorCoordinate.fromLngLat([15.4467468, 47.0755519], 0);
+            lk.position.set((mcLk.x - T.x) / T.scale, 0, (mcLk.y - T.y) / T.scale);
+            scene.add(lk);
+
+            // ---- Grazer Burg + Burgtor, and the Paulustor gate ----
+            // The castle complex (seat of the Land government) beside the Dom —
+            // completes the Stadtkrone. Real multipolygon: outer ring with two
+            // courtyard HOLES (THREE.Shape.holes) + a west wing + the Burgtor.
+            // CARTO's own Burg extrusion (feature id 67773, unreliable to hide)
+            // is fully ENCLOSED by this model instead.
+            const BG_OUTER = [[-52.1,68.2],[-24.5,68.3],[-24.5,69.5],[-12.9,70.2],[-12.9,70.6],[13.0,71.9],[14.4,62.2],[36.3,63.9],[37.8,46.2],[43.1,44.4],[43.0,40.3],[40.9,40.3],[41.0,38.5],[40.8,33.6],[41.7,33.5],[42.7,32.8],[42.6,30.5],[46.4,30.4],[47.1,31.3],[48.3,30.1],[47.7,29.3],[50.0,14.1],[52.2,-2.4],[59.3,-1.6],[59.8,-8.0],[65.5,-7.7],[65.5,-8.7],[67.3,-8.7],[67.8,-9.4],[68.0,-9.7],[68.0,-11.3],[68.0,-13.2],[67.0,-13.7],[65.5,-14.0],[66.3,-34.5],[69.2,-34.6],[69.2,-37.6],[69.3,-41.6],[66.4,-41.6],[67.1,-62.8],[67.4,-68.8],[60.8,-68.7],[56.8,-69.2],[47.9,-71.8],[47.2,-71.7],[36.4,-69.6],[36.4,-70.1],[32.9,-69.8],[30.6,-69.6],[30.7,-69.0],[24.0,-67.7],[24.2,-67.0],[24.9,-67.2],[25.0,-66.8],[29.4,-67.6],[29.9,-64.8],[30.8,-64.9],[31.7,-56.1],[34.0,-56.5],[36.4,-56.9],[36.5,-56.3],[42.4,-56.2],[42.6,-47.8],[41.6,-14.5],[38.9,-14.8],[35.6,-15.1],[35.5,-16.0],[35.5,-16.7],[33.6,-17.9],[31.0,-17.4],[30.0,-15.9],[23.7,-15.4],[16.1,-14.6],[9.9,-42.9],[5.5,-59.0],[5.3,-59.7],[-31.8,-50.3],[-28.7,-37.2],[-6.5,-43.0],[3.5,-1.9],[19.0,-4.9],[24.2,-5.6],[26.5,-5.9],[29.7,-6.3],[29.3,1.2],[29.0,4.2],[28.6,8.3],[28.5,10.8],[28.1,20.4],[-20.1,17.6],[-24.1,17.5],[-24.1,32.6],[-23.1,32.8],[-23.3,37.3],[-23.3,39.4],[-24.1,38.6],[-26.1,38.9],[-27.0,40.7],[-26.6,42.0],[-32.5,42.0],[-32.5,44.3],[-50.7,44.8]];
+            const BG_H1 = [[33.7,3.5],[36.5,4.1],[39.2,4.8],[37.0,21.2],[34.7,21.1],[32.4,20.9]];
+            const BG_H2 = [[36.8,42.1],[29.3,42.9],[28.8,60.0],[-15.2,55.9],[-14.9,37.3],[-14.9,33.5],[29.2,33.0],[33.7,32.9],[36.0,32.9],[36.8,32.8],[36.8,38.3]];
+            const BG_W = [[-68.8,44.2],[-69.3,22.9],[-37.3,23.6],[-31.7,23.9],[-31.6,36.2],[-52.3,35.8],[-52.7,44.5],[-55.6,44.5]];
+            const BT_POLY = [[60.8,-68.7],[60.7,-70.6],[61.0,-76.0],[61.2,-79.6],[61.5,-83.4],[59.8,-83.4],[49.7,-84.9],[49.4,-83.7],[48.3,-79.2],[47.9,-75.7],[48.0,-72.1],[47.9,-71.8],[56.8,-69.2]];
+            const brg = new THREE.Group();
+            const BGCREAM = 0xeee3c8, BGTILE = 0x9c5a44;
+            const holedShape = () => {
+              const s = new THREE.Shape();
+              BG_OUTER.forEach((p, i) => i ? s.lineTo(p[0], p[1]) : s.moveTo(p[0], p[1]));
+              s.closePath();
+              for (const hole of [BG_H1, BG_H2]) {
+                const h = new THREE.Path();
+                hole.forEach((p, i) => i ? h.lineTo(p[0], p[1]) : h.moveTo(p[0], p[1]));
+                h.closePath(); s.holes.push(h);
+              }
+              return s;
+            };
+            const bgBody = new THREE.ExtrudeGeometry(holedShape(), { depth: 14, bevelEnabled: false });
+            bgBody.rotateX(-Math.PI / 2);
+            brg.add(facet(bgBody, BGCREAM, 0.72, 0.42));
+            const bgRoof = new THREE.ExtrudeGeometry(holedShape(), { depth: 3, bevelEnabled: false });
+            bgRoof.rotateX(-Math.PI / 2);
+            const bgRoofM = facet(bgRoof, BGTILE, 0.58, 0.45);
+            bgRoofM.position.y = 14; brg.add(bgRoofM);
+            brg.add(extrudeFoot(BG_W, 13, BGCREAM, 0.72, 0.42));         // west wing
+            const bgwR = extrudeFoot(BG_W, 2.5, BGTILE, 0.58, 0.45);
+            bgwR.position.y = 13; brg.add(bgwR);
+            brg.add(extrudeFoot(BT_POLY, 9, BGCREAM, 0.72, 0.42));       // Burgtor
+            const btR = extrudeFoot(BT_POLY, 2, BGTILE, 0.58, 0.45);
+            btR.position.y = 9; brg.add(btR);
+            const mcBg = maplibregl.MercatorCoordinate.fromLngLat([15.44233, 47.072855], 0);
+            brg.position.set((mcBg.x - T.x) / T.scale, 0, (mcBg.y - T.y) / T.scale);
+            scene.add(brg);
+
+            // Paulustor: the renaissance city gate at the foot of the Schlossberg
+            const PT_BLOCK = [[-3.2,3.7],[3.5,-0.8],[1.5,-3.6],[-5.1,0.9]];
+            const plt = new THREE.Group();
+            plt.add(extrudeFoot(PT_BLOCK, 11, BGCREAM, 0.72, 0.42));
+            (function () {   // hipped tile cap
+              let cx = 0, cz = 0; PT_BLOCK.forEach(p => { cx += p[0]; cz += -p[1]; }); cx /= PT_BLOCK.length; cz /= PT_BLOCK.length;
+              const A = new THREE.Vector3(cx, 14, cz), pos = [], col = [], base = new THREE.Color(BGTILE);
+              for (let i = 0; i < PT_BLOCK.length; i++) {
+                const p0 = PT_BLOCK[i], p1 = PT_BLOCK[(i + 1) % PT_BLOCK.length];
+                const a = new THREE.Vector3(p0[0], 11, -p0[1]), b = new THREE.Vector3(p1[0], 11, -p1[1]);
+                const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(A, a)).normalize(); if (n.y < 0) n.negate();
+                const f = Math.min(1.12, 0.55 + 0.5 * Math.max(0, n.dot(LIGHT)));
+                pos.push(a.x, a.y, a.z, b.x, b.y, b.z, A.x, A.y, A.z); for (let k = 0; k < 3; k++) col.push(base.r * f, base.g * f, base.b * f);
+              }
+              const rg = new THREE.BufferGeometry();
+              rg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+              rg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+              plt.add(new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+            })();
+            // stubs of the Paulustorbastei wall continuing both ways from the gate
+            [[-9, 5.9], [8, -5.3]].forEach(([E, N]) => {
+              const wall = facet(new THREE.BoxGeometry(2, 6.5, 10), BGCREAM, 0.7, 0.4);
+              wall.position.set(E, 3.25, -N); wall.rotation.y = Math.atan2(6.7, 4.5);
+              plt.add(wall);
+            });
+            const mcPt = maplibregl.MercatorCoordinate.fromLngLat([15.440834, 47.075953], 0);
+            plt.position.set((mcPt.x - T.x) / T.scale, 0, (mcPt.y - T.y) / T.scale);
+            scene.add(plt);
+
+            // Occluder registry for the vehicle occlusion pass (see updateOcclusion):
+            // each landmark's footprint polys (local metres E,N) + heights. Guarded —
+            // onAdd re-runs after every theme switch and must not duplicate.
+            if (!LMK_OCC.length) LMK_OCC.push(
+              { name: 'Uhrturm', info: 'Das Wahrzeichen von Graz (28 m, 13. Jh.). Die Uhr von 1712 hat "vertauschte" Zeiger: der große zeigt die Stunden. 1809 kauften die Grazer den Turm für 2.987 Gulden vom Abriss frei.',
+                lng: 15.4377297, lat: 47.0735395, polys: [{ p: [[-5,-5],[5,-5],[5,5],[-5,5]], h: 32 }] },
+              { name: 'Glockenturm "Liesl"', info: 'Achteckiger Glockenturm am Schloßberg (1588, 34 m). Seine Glocke "Liesl" (4,6 t) ist die drittgrößte der Steiermark.',
+                lng: 15.4371872, lat: 47.0759736, polys: [{ p: [[-6,-6],[6,-6],[6,6],[-6,6]], h: 34 }] },
+              { name: 'Murinsel', info: 'Schwimmende Stahlinsel von Vito Acconci, gebaut zum Kulturhauptstadtjahr 2003. Café unter der Glaskuppel, Amphitheater, zwei Stege zu den Ufern.',
+                lng: 15.434596,  lat: 47.073166,  polys: [{ p: MUR_FOOT, h: 12 }] },
+              { name: 'Herz-Jesu-Kirche', info: 'Neugotik von Georg Hauberrisser (1881–1887). Mit 109,6 m der höchste Kirchturm der Steiermark und der dritthöchste Österreichs.',
+                lng: 15.455777,  lat: 47.069640,  polys: HJ_PARTS.map(pt => ({ p: pt.p, h: pt.h })) },
+              { name: 'Kunsthaus "Friendly Alien"', info: 'Museum für Gegenwartskunst von Peter Cook & Colin Fournier (2003), mit BIX-Medienfassade. Daneben das Eiserne Haus (1848), der älteste Gusseisenbau Kontinentaleuropas.',
+                lng: 15.434015,  lat: 47.0712985, polys: [{ p: BLOB, h: 22 }, { p: EISEN, h: 10 }] },
+              { name: 'Mausoleum', info: 'Grabmal Kaiser Ferdinands II. mit Katharinenkirche (ab 1614, Pietro de Pomis) — Manierismus, Teil der Grazer Stadtkrone.',
+                lng: 15.4426221, lat: 47.0716735, polys: [{ p: MZ_BODY, h: 18 }, { p: [[10,3],[19,3],[19,12],[10,12]], h: 34 }] },
+              { name: 'Rathaus', info: 'Grazer Rathaus am Hauptplatz (1887–1893, Historismus). Sitz von Bürgermeister und Gemeinderat.',
+                lng: 15.4386227, lat: 47.0704186, polys: [{ p: RH_POLY, h: 19.6 }, { p: [[-3,36],[7,36],[7,46],[-3,46]], h: 52 }] },
+              { name: 'Mariahilferkirche', info: 'Wallfahrtskirche der Minoriten im Lend. Fassade von Pietro de Pomis (1607–1611), die Doppeltürme kamen 1742–44 dazu.',
+                lng: 15.4330619, lat: 47.0728242, polys: [{ p: MH_POLY, h: 19 }, { p: [[12,1],[18,1],[18,8],[12,8]], h: 39 }, { p: [[15,-11],[21,-11],[21,-4],[15,-4]], h: 39 }] },
+              { name: 'Grazer Dom', info: 'Dom St. Ägidius (ab 1438 unter Kaiser Friedrich III., Spätgotik) mit barockem Turmhelm. Bischofskirche und Teil der Stadtkrone.',
+                lng: 15.4423443, lat: 47.0720132, polys: [{ p: DOM_POLY, h: 22 }, { p: [[-29,0],[-21,0],[-21,10],[-29,10]], h: 48 }] },
+              { name: 'Franziskanerkirche', info: 'Kloster seit 1239 — einer der ältesten Bauten der Stadt am Murufer. Der markante Turm stammt von 1636.',
+                lng: 15.4365415, lat: 47.0706718, polys: [{ p: FR_POLY, h: 18 }, { p: [[17,-6],[25,-6],[25,2],[17,2]], h: 46 }] },
+              { name: 'Opernhaus', info: 'Neobarock von Fellner & Helmer (1899), gebaut in nur zwei Jahren. Mit ~1.200 Plätzen das zweitgrößte Opernhaus Österreichs.',
+                lng: 15.4455959, lat: 47.0690169, polys: [{ p: OP_POLY, h: 17.5 }, { p: [[10,-32],[40,-32],[40,-6],[10,-6]], h: 29 }] },
+              { name: 'Stadtpfarrkirche', info: 'Stadtpfarrkirche zum Heiligen Blut an der Herrengasse (15. Jh.), 56-m-Turm mit barocker Doppelzwiebel-Haube.',
+                lng: 15.4412014, lat: 47.0694177, polys: [{ p: SP_POLY, h: 19 }, { p: [[-26,-13],[-16,-13],[-16,-3],[-26,-3]], h: 50 }] },
+              { name: 'Leechkirche', info: 'Geweiht 1293 — das älteste erhaltene Bauwerk von Graz. Frühgotische Kirche des Deutschen Ordens am Uni-Campus.',
+                lng: 15.4467468, lat: 47.0755519, polys: [{ p: LK_POLY, h: 19 }, { p: [[-14,-2],[-9,-2],[-9,4],[-14,4]], h: 33 }] },
+              { name: 'Grazer Burg', info: 'Residenz Kaiser Friedrichs III. (ab 1438), heute Sitz der Landesregierung. Berühmt für die gotische Doppelwendeltreppe (1499). Mit Burgtor zum Stadtpark.',
+                lng: 15.44233,   lat: 47.072855,  polys: [{ p: BG_OUTER, h: 17 }, { p: BG_W, h: 15.5 }, { p: BT_POLY, h: 11 }] },
+              { name: 'Paulustor', info: 'Renaissance-Stadttor der äußeren Befestigung (um 1620) am Fuß des Schloßbergs.',
+                lng: 15.440834,  lat: 47.075953,  polys: [{ p: PT_BLOCK, h: 14 }] }
+            );
+
+            renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
+            renderer.autoClear = false;
+            renderer.outputColorSpace = THREE.SRGBColorSpace;   // exact authored hex
+          },
+          onRemove() { if (renderer) renderer.dispose(); },
+          render(gl, matrix) {
+            const l = new THREE.Matrix4()
+              .makeTranslation(T.x, T.y, T.z)
+              .scale(new THREE.Vector3(T.scale, -T.scale, T.scale))
+              .multiply(new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(1, 0, 0), Math.PI / 2));
+            camera.projectionMatrix = new THREE.Matrix4().fromArray(matrix).multiply(l);
+            renderer.resetState();
+            // Clear only DEPTH (not colour — that keeps the map). We share
+            // MapLibre's depth buffer, so without this the tower's lower body
+            // fails the depth test against the ground/building depths and the
+            // map shows through it; the roof (above building height) survived,
+            // which is why only the shaft looked see-through.
+            renderer.clearDepth();
+            renderer.render(scene, camera);
+          }
+        };
+      };
+      threeLoading = false;
+      refresh3D();
+    }
+
+    // Re-assert the layer + theme colour. Needed because setStyle() may DIFF
+    // styles instead of reloading: the diff removes our custom layer and the
+    // 'style.load' event never fires on that path.
+    function refresh3D() {
+      if (!map) return;
+      ensure3D();
+      if (map.getLayer('b3d')) {
+        map.setPaintProperty('b3d', 'fill-extrusion-color', isDark() ? '#30343c' : '#d9d6cf');
+        map.setLayoutProperty('b3d', 'visibility', pitched ? 'visible' : 'none');
       }
-      for (const w of ['from', 'to']) if (pins[w]) pins[w].setMap(map);
-      poll(); loadStops();
+      // modeled tower once three.js is in; blocky extrusion until then
+      const modeled = !!threeLayerFactory;
+      if (modeled && pitched) {
+        if (!map.getLayer('uhrturm3js')) try { map.addLayer(threeLayerFactory()); } catch (e) {}
+      } else if (map.getLayer('uhrturm3js')) {
+        try { map.removeLayer('uhrturm3js'); } catch (e) {}
+      }
+      if (map.getLayer('uhrturm'))
+        map.setLayoutProperty('uhrturm', 'visibility', (pitched && !modeled) ? 'visible' : 'none');
+      updateOcclusion();   // re-evaluate ghosting when 3D toggles on/off
+    }
+    function apply3D() {
+      if (!map) return;
+      refresh3D();
+      if (pitched) ensureThree();          // lazy-load the modeled tower
+      map.easeTo({ pitch: pitched ? 45 : 0, duration: 650 });
+      $('btn3d').setAttribute('aria-pressed', String(pitched));
+    }
+
+    function initMap() {
+      map = new maplibregl.Map({
+        container: 'map',
+        style: isDark() ? STYLE.dark : STYLE.light,
+        center: [GRAZ.lng, GRAZ.lat], zoom: 13,
+        attributionControl: { compact: true },
+        dragRotate: false, pitchWithRotate: false, maxPitch: 45
+      });
+      if (map.touchZoomRotate) map.touchZoomRotate.disableRotation();
+      window.__map = map;                        // debug/testing hook
+      map.on('error', () => {});                 // tile/style hiccups shouldn't reach the UI
+      info = makeInfo();
+      map.on('load', () => {
+        map.on('moveend', () => { poll(); loadStops(); updateOcclusion(); });
+        // (no zoomend resize: the animate loop glides marker scale with the zoom)
+        map.on('click', e => {
+          if (armed && e.lngLat) { pickPoint(armed, e.lngLat); return; }
+          const lm = landmarkHit(e.point);
+          if (lm) { openLandmark(lm, e.lngLat); return; }
+          info.close(); clearRoute();
+        });
+        apply3D();
+        poll(); loadStops();
+        if (!pollTimer) pollTimer = setInterval(poll, 7000);
+        requestAnimationFrame(animate);
+      });
+    }
+
+    // Theme switch = swap the basemap style. DOM markers survive setStyle; our line
+    // layers do not, so they're cleared first and the vehicles are restyled after.
+    function setTheme() {
+      paintChips();
+      if (!map) return;
+      clearStops(); lastStopKey = ''; clearRoute(); clearTripLine();
+      map.setStyle(isDark() ? STYLE.dark : STYLE.light);
+      // 'idle' fires whether setStyle diffed or fully reloaded; 'style.load'
+      // only fires on a full reload — waiting on it left 3D buildings missing
+      // after a theme switch.
+      map.once('idle', () => {
+        refresh3D();
+        for (const v of vehicles.values()) v.marker.setIcon(vIcon(v.kind, v.head, v.line));
+        loadStops();
+      });
     }
 
     // ---------- vehicle models (top-down silhouettes, rotated to heading) ----------
@@ -465,68 +1475,152 @@
       // shorter, rounded nose
       bus:  'M 0,-11.5 Q 4.4,-11.5 4.4,-8 L 4.4,8.5 Q 4.4,11 2.2,11 L -2.2,11 Q -4.4,11 -4.4,8.5 L -4.4,-8 Q -4.4,-11.5 0,-11.5 Z',
       // longest, blunt front
-      train: 'M 0,-18 L 4.6,-13 L 4.6,14 Q 4.6,16.5 2.3,16.5 L -2.3,16.5 Q -4.6,16.5 -4.6,14 L -4.6,-13 Z'
+      train: 'M 0,-18 L 4.6,-13 L 4.6,14 Q 4.6,16.5 2.3,16.5 L -2.3,16.5 Q -4.6,16.5 -4.6,14 L -4.6,-13 Z',
+      // funicular: a short, SYMMETRIC boxy car (cabs at both ends — it never turns around)
+      cable: 'M -4.4,-10.5 Q -4.4,-13 -2,-13 L 2,-13 Q 4.4,-13 4.4,-10.5 L 4.4,10.5 Q 4.4,13 2,13 L -2,13 Q -4.4,13 -4.4,10.5 Z'
     };
+    // Continuous in fractional zoom — sizes glide during a pinch instead of
+    // snapping between bands when it ends. Two regimes: gentle linear growth at
+    // map scale, then from ~z16.5 geometric growth (~1.6×/level) so close up the
+    // vehicle grows WITH the streets instead of shrinking into a toy.
     function vehScale() {
       const z = map ? map.getZoom() : 13;
-      return z >= 17 ? 1.7 : z >= 16 ? 1.45 : z >= 15 ? 1.2 : z >= 13 ? 1 : 0.8;
+      if (z <= 16.5) return Math.max(0.8, 0.8 + (z - 12.5) * 0.2);
+      return Math.min(6, 1.6 * Math.pow(1.6, z - 16.5));
     }
+    // Close-up top-downs, drawn from scratch (no borrowed art): an articulated
+    // Bim with accordion joints, pantograph, roof AC and doors; a bus with
+    // windshield sweep, mirrors and roof hatches; a twin-unit S-Bahn. Details
+    // are translucent overlays so the line colour keeps dominating. Only used
+    // past ~z16 — at map scale, detail is noise, so the minimal silhouettes stay.
+    const DETAIL = {
+      tram: c =>
+        '<path d="M 0,-22 L 4.6,-17.5 L 5,-15 L 5,20 Q 5,22 2.8,22 L -2.8,22 Q -5,22 -5,20 L -5,-15 L -4.6,-17.5 Z" fill="' + c + '" stroke="#fff" stroke-width="1.6"/>' +
+        '<path d="M -3.3,-19.6 Q 0,-21.4 3.3,-19.6 L 2.8,-16.8 L -2.8,-16.8 Z" fill="#000" opacity=".5"/>' +
+        '<rect x="-5" y="-8.4" width="10" height="2.1" rx=".6" fill="#000" opacity=".28"/>' +
+        '<rect x="-5" y="6.3" width="10" height="2.1" rx=".6" fill="#000" opacity=".28"/>' +
+        '<path d="M -3.8,-11.6 L 3.8,-9.8 M -3.8,-9.8 L 3.8,-11.6" stroke="#000" opacity=".4" stroke-width=".8"/>' +
+        '<rect x="-2.9" y="-4.6" width="5.8" height="3.4" rx="1" fill="#fff" opacity=".22"/>' +
+        '<rect x="-2.9" y="10.6" width="5.8" height="3.4" rx="1" fill="#fff" opacity=".22"/>' +
+        '<rect x="4.15" y="-1" width=".85" height="3.8" rx=".3" fill="#fff" opacity=".38"/>' +
+        '<rect x="-5" y="-1" width=".85" height="3.8" rx=".3" fill="#fff" opacity=".38"/>' +
+        '<rect x="4.15" y="15" width=".85" height="3.8" rx=".3" fill="#fff" opacity=".38"/>' +
+        '<rect x="-5" y="15" width=".85" height="3.8" rx=".3" fill="#fff" opacity=".38"/>',
+      bus: c =>
+        '<rect x="-5.7" y="-10.3" width="1.2" height=".9" rx=".3" fill="' + c + '" stroke="#fff" stroke-width=".5"/>' +
+        '<rect x="4.5" y="-10.3" width="1.2" height=".9" rx=".3" fill="' + c + '" stroke="#fff" stroke-width=".5"/>' +
+        '<path d="M 0,-12 Q 4.6,-12 4.6,-8.6 L 4.6,9.6 Q 4.6,12 2.3,12 L -2.3,12 Q -4.6,12 -4.6,9.6 L -4.6,-8.6 Q -4.6,-12 0,-12 Z" fill="' + c + '" stroke="#fff" stroke-width="1.6"/>' +
+        '<path d="M -3.4,-10.5 Q 0,-11.7 3.4,-10.5 L 3,-8.3 L -3,-8.3 Z" fill="#000" opacity=".5"/>' +
+        '<rect x="-1.7" y="-4.6" width="3.4" height="2.7" rx=".7" fill="#fff" opacity=".22"/>' +
+        '<rect x="-1.7" y="0.6" width="3.4" height="2.7" rx=".7" fill="#fff" opacity=".22"/>' +
+        '<rect x="-3.1" y="9.2" width="6.2" height="1.6" rx=".5" fill="#000" opacity=".3"/>' +
+        '<rect x="3.85" y="-6.2" width=".75" height="3.2" rx=".3" fill="#fff" opacity=".38"/>' +
+        '<rect x="3.85" y="3.4" width=".75" height="3.2" rx=".3" fill="#fff" opacity=".38"/>',
+      train: c =>
+        '<path d="M 0,-24 L 4.8,-18.5 L 5,-16 L 5,22 Q 5,24 2.6,24 L -2.6,24 Q -5,24 -5,22 L -5,-16 L -4.8,-18.5 Z" fill="' + c + '" stroke="#fff" stroke-width="1.6"/>' +
+        '<path d="M -3.4,-21 Q 0,-23.2 3.4,-21 L 2.9,-18 L -2.9,-18 Z" fill="#000" opacity=".5"/>' +
+        '<rect x="-5" y="-1.1" width="10" height="2.2" rx=".6" fill="#000" opacity=".28"/>' +
+        '<rect x="-1" y="-15" width="2" height="12" rx=".8" fill="#fff" opacity=".16"/>' +
+        '<rect x="-1" y="3" width="2" height="18" rx=".8" fill="#fff" opacity=".16"/>' +
+        '<rect x="4.15" y="-9" width=".85" height="3.6" rx=".3" fill="#fff" opacity=".38"/>' +
+        '<rect x="-5" y="-9" width=".85" height="3.6" rx=".3" fill="#fff" opacity=".38"/>',
+      // funicular: symmetric box, cabs + windshields at BOTH ends, a haul-rope
+      // line down the centre, and the stepped-floor divisions of a hillside car
+      cable: c =>
+        '<path d="M -5,-15 Q -5,-18 -2.4,-18 L 2.4,-18 Q 5,-18 5,-15 L 5,15 Q 5,18 2.4,18 L -2.4,18 Q -5,18 -5,15 Z" fill="' + c + '" stroke="#fff" stroke-width="1.6"/>' +
+        '<path d="M -3.2,-16 Q 0,-17.6 3.2,-16 L 2.8,-13.4 L -2.8,-13.4 Z" fill="#000" opacity=".5"/>' +
+        '<path d="M -3.2,16 Q 0,17.6 3.2,16 L 2.8,13.4 L -2.8,13.4 Z" fill="#000" opacity=".5"/>' +
+        '<rect x="-.55" y="-13" width="1.1" height="26" rx=".4" fill="#000" opacity=".24"/>' +
+        '<rect x="-5" y="-4.4" width="10" height="1.5" rx=".5" fill="#000" opacity=".22"/>' +
+        '<rect x="-5" y="2.9" width="10" height="1.5" rx=".5" fill="#000" opacity=".22"/>' +
+        '<rect x="-3.2" y="-11.4" width="2.1" height="2.4" rx=".6" fill="#fff" opacity=".22"/>' +
+        '<rect x="1.1" y="-11.4" width="2.1" height="2.4" rx=".6" fill="#fff" opacity=".22"/>' +
+        '<rect x="-3.2" y="9" width="2.1" height="2.4" rx=".6" fill="#fff" opacity=".22"/>' +
+        '<rect x="1.1" y="9" width="2.1" height="2.4" rx=".6" fill="#fff" opacity=".22"/>' +
+        '<rect x="4.15" y="-2" width=".85" height="4" rx=".3" fill="#fff" opacity=".38"/>' +
+        '<rect x="-5" y="-2" width=".85" height="4" rx=".3" fill="#fff" opacity=".38"/>'
+    };
+    const shapeKind = k => k === 'tram' ? 'tram' : k === 'train' ? 'train' : k === 'cable' ? 'cable' : 'bus';
+    // half-length of the drawn body, for placing the label under the tail
+    function vehHalf(kind, detail) {
+      const k = shapeKind(kind);
+      if (detail) return k === 'tram' ? 22 : k === 'train' ? 24 : k === 'cable' ? 18 : 12;
+      return k === 'tram' ? 16 : k === 'train' ? 18 : k === 'cable' ? 13 : 11.5;
+    }
+    // body-only outlines, used as the grounded "side" layer of the fake extrusion
+    const BODY = {
+      tram: 'M 0,-22 L 4.6,-17.5 L 5,-15 L 5,20 Q 5,22 2.8,22 L -2.8,22 Q -5,22 -5,20 L -5,-15 L -4.6,-17.5 Z',
+      bus: 'M 0,-12 Q 4.6,-12 4.6,-8.6 L 4.6,9.6 Q 4.6,12 2.3,12 L -2.3,12 Q -4.6,12 -4.6,9.6 L -4.6,-8.6 Q -4.6,-12 0,-12 Z',
+      train: 'M 0,-24 L 4.8,-18.5 L 5,-16 L 5,22 Q 5,24 2.6,24 L -2.6,24 Q -5,24 -5,22 L -5,-16 L -4.8,-18.5 Z',
+      cable: 'M -5,-15 Q -5,-18 -2.4,-18 L 2.4,-18 Q 5,-18 5,-15 L 5,15 Q 5,18 2.4,18 L -2.4,18 Q -5,18 -5,15 Z'
+    };
+    // In the tilted view a raised roof projects toward the horizon; on a
+    // ground-aligned marker (bearing locked at 0) that is a plain -y shift,
+    // scaled by the current pitch. At pitch 0 the roof covers the base exactly,
+    // so flat mode looks — and costs — the same as before.
+    function vehLift(S) {
+      const p = map ? map.getPitch() : 0;
+      return 7 * S * (p / 45);
+    }
+    // The silhouette rides in a heading-rotated <g>; the line number sits on an
+    // upright label just below it — the same two-part look, in one DOM marker.
     function vIcon(kind, head, line) {
-      return {
-        path: MODEL[kind === 'tram' ? 'tram' : kind === 'train' ? 'train' : 'bus'],
-        fillColor: vehColor(kind, line), fillOpacity: 1,
-        strokeColor: '#ffffff', strokeWeight: 1.8,
-        rotation: head || 0, scale: vehScale(),
-        anchor: new google.maps.Point(0, 0)
+      const color = vehColor(kind, line), S = vehScale(), H = head || 0;
+      const detail = S >= 1.3;                      // ~z15+: close enough for detail
+      const k = shapeKind(kind);
+      const inner = detail ? DETAIL[k](color)
+        : '<path d="' + MODEL[k] + '" fill="' + color + '" stroke="#ffffff" stroke-width="1.8"/>';
+      const base = detail ? BODY[k] : MODEL[k];
+      return el => {
+        el.dataset.detail = detail ? '1' : '0';
+        const L = vehLift(S);
+        // solid extrusion: the body path stacked from ground to roof reads as
+        // walls, not a roof floating over a shadow. Slice count scales with the
+        // maximum lift so gaps never show.
+        const K = Math.max(3, Math.round(7 * S / 1.4));
+        let slices = '';
+        for (let i = 0; i < K; i++) {
+          const f = i / K;
+          slices += '<g class="sl" data-f="' + f.toFixed(3) + '" transform="translate(0,' + (-L * f).toFixed(1) + ') rotate(' + H + ') scale(' + S + ')">' +
+            '<path d="' + base + '" fill="' + color + '" style="filter:brightness(.42)"/></g>';
+        }
+        el.innerHTML =
+          '<svg width="60" height="60" viewBox="-30 -30 60 60" style="position:absolute;left:-30px;top:-30px;overflow:visible">' +
+            slices +
+            '<g class="gl" transform="translate(0,' + (-L).toFixed(1) + ')">' +
+              '<g class="gr" transform="rotate(' + H + ') scale(' + S + ')">' + inner + '</g></g>' +
+          '</svg>' +
+          '<span class="vlabel" style="top:' + (vehHalf(kind, detail) * S + 6) + 'px">' + esc(line) + '</span>';
       };
     }
-    // the line number rides in a second, unrotated marker just below the model
-    function tagIcon() {
-      return { path: 'M 0,0 L 0,0', scale: 1, strokeOpacity: 0, fillOpacity: 0,
-               labelOrigin: new google.maps.Point(0, 16 + 14 * vehScale()) };
-    }
-    function tagLabel(line) {
-      return { text: line, color: cssv('--fg'), fontSize: '11px', fontWeight: '700' };
-    }
     function makeMarker(v) {
-      const body = new google.maps.Marker({
-        map, position: v.to, icon: vIcon(v.kind, v.head, v.line),
-        zIndex: v.kind === 'tram' ? 30 : 20, optimized: false
-      });
-      const tag = new google.maps.Marker({
-        map, position: v.to, icon: tagIcon(), label: tagLabel(v.line),
-        zIndex: v.kind === 'tram' ? 31 : 21, clickable: false, optimized: false
-      });
-      v.tag = tag;
-      return body;
-    }
-    function makeMarker(v) {
-      return new google.maps.Marker({
-        map, position: v.to, icon: vIcon(v.kind, v.head, v.line), zIndex: v.kind === 'tram' ? 3 : 2,
-        label: { text: v.line, color: cssv('--fg'), fontSize: '11px', fontWeight: '700' }
-      });
+      const el = document.createElement('div');
+      el.className = 'veh';
+      return new Mk({ map, position: v.to, element: el, ground: true, depthSort: true,
+        zIndex: (v.kind === 'tram' || v.kind === 'cable') ? 30 : 20, render: vIcon(v.kind, v.head, v.line) });
     }
 
     // ---------- stops (live from HAFAS, no GTFS needed) ----------
     // Haltestelle badge: the "H" sign locals actually look for on the street.
     // Image icons (not vector symbols) so we can draw the glyph in two colours.
+    function stopPx(isTram) {
+      const z = map ? map.getZoom() : 15;
+      let base = z > 17 ? 22 * Math.pow(1.3, z - 17) : 16 + (z - 15) * 3;
+      base = Math.max(13, Math.min(36, base));                      // continuous
+      return isTram ? base : base * 0.85;
+    }
     function stopIcon(isTram) {
       const fill = isTram ? KIND_COLOR.tram() : '#5b6472';
-      const z = map ? map.getZoom() : 15;
-      const base = z >= 17 ? 22 : z >= 16 ? 19 : z >= 15 ? 16 : 13;
-      const size = isTram ? base : Math.round(base * 0.85);
-      const svg =
-        '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">' +
-          '<rect x="1.6" y="1.6" width="14.8" height="14.8" rx="4.6" fill="' + fill + '" ' +
-            'stroke="#ffffff" stroke-width="2"/>' +
-          '<rect x="5.9" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
-          '<rect x="10.2" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
-          '<rect x="5.9" y="8.1" width="6.2" height="1.9" fill="#ffffff"/>' +
-        '</svg>';
-      return {
-        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-        scaledSize: new google.maps.Size(size, size),
-        anchor: new google.maps.Point(size / 2, size / 2)
+      const size = stopPx(isTram);
+      return el => {
+        el.innerHTML =
+          '<svg width="' + size + '" height="' + size + '" viewBox="0 0 18 18" ' +
+            'style="position:absolute;left:' + (-size / 2) + 'px;top:' + (-size / 2) + 'px">' +
+            '<rect x="1.6" y="1.6" width="14.8" height="14.8" rx="4.6" fill="' + fill + '" stroke="#ffffff" stroke-width="2"/>' +
+            '<rect x="5.9" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
+            '<rect x="10.2" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
+            '<rect x="5.9" y="8.1" width="6.2" height="1.9" fill="#ffffff"/>' +
+          '</svg>';
       };
     }
     function clearStops() { for (const m of stops.values()) m.setMap(null); stops.clear(); }
@@ -538,14 +1632,14 @@
       if (!c || !b) return;
       // one ring query covering the viewport, capped so we never ask for the world
       const ne = b.getNorthEast();
-      const dLat = (ne.lat() - c.lat()) * 111320, dLng = (ne.lng() - c.lng()) * 111320 * Math.cos(c.lat() * Math.PI / 180);
+      const dLat = (ne.lat - c.lat) * 111320, dLng = (ne.lng - c.lng) * 111320 * Math.cos(c.lat * Math.PI / 180);
       const radius = Math.min(4000, Math.round(Math.hypot(dLat, dLng)));
-      const key = c.lat().toFixed(3) + ',' + c.lng().toFixed(3) + ',' + radius;
+      const key = c.lat.toFixed(3) + ',' + c.lng.toFixed(3) + ',' + radius;
       if (key === lastStopKey) return;      // viewport barely moved — keep what we have
       stopsBusy = true;
       try {
         const res = await hafas('LocGeoPos', {
-          ring: { cCrd: { x: Math.round(c.lng() * 1e6), y: Math.round(c.lat() * 1e6) }, maxDist: radius, minDist: 0 },
+          ring: { cCrd: { x: Math.round(c.lng * 1e6), y: Math.round(c.lat * 1e6) }, maxDist: radius, minDist: 0 },
           getStops: true, getPOIs: false, maxLoc: 400
         });
         lastStopKey = key;
@@ -574,9 +1668,10 @@
           const id = key;
           seen.add(id);
           if (stops.has(id)) continue;
-          const m = new google.maps.Marker({
-            map, position: { lat: l.crd.y / 1e6, lng: l.crd.x / 1e6 },
-            icon: stopIcon(g.tram), title: shortStop(l.name), zIndex: 5
+          const el = document.createElement('div'); el.className = 'stopm';
+          const m = new Mk({
+            map, position: { lat: l.crd.y / 1e6, lng: l.crd.x / 1e6 }, ground: true,
+            element: el, render: stopIcon(g.tram), title: shortStop(l.name), zIndex: 5
           });
           m.__lid = l.lid; m.__name = shortStop(l.name); m.__tram = g.tram;
           m.addListener('click', () => openStop(m));
@@ -603,7 +1698,7 @@
       box.className = 'iw';
       const h = document.createElement('b'); h.textContent = m.__name;
       box.append(h, document.createTextNode('Loading departures…'));
-      info.setContent(box); info.open({ map, anchor: m });
+      info.setContent(box); info.open({ anchor: m });
       try {
         const res = await hafas('StationBoard', { type: 'DEP', stbLoc: { lid: m.__lid }, maxJny: 8 });
         const prodL = (res.common && res.common.prodL) || [];
@@ -635,6 +1730,27 @@
       const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
       return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
     };
+    // Our VPS polls HAFAS once for all of Graz every ~5 s and serves the result
+    // as a static file — same origin, ~50 ms, instead of ~1 s per phone direct
+    // to HAFAS. Direct HAFAS stays as the fallback: used when the file is stale
+    // (poller down) or the viewport leaves the cached Graz rect.
+    const PROXY_URL = './api/vehicles.json';
+    const PROXY_RECT = { minLon: 15.30, maxLon: 15.60, minLat: 46.98, maxLat: 47.15 };
+    const PROXY_MAX_AGE = 20000;
+    async function pollProxy(sw, ne) {
+      const pad = 0.003;                                  // keep vehicles just off-screen
+      if (sw.lng < PROXY_RECT.minLon - pad || ne.lng > PROXY_RECT.maxLon + pad ||
+          sw.lat < PROXY_RECT.minLat - pad || ne.lat > PROXY_RECT.maxLat + pad) return null;
+      const r = await fetch(PROXY_URL, { cache: 'no-store' });
+      if (!r.ok) return null;
+      const d = await r.json();
+      if (!d || !d.res || Date.now() - d.t > PROXY_MAX_AGE) return null;   // stale — poller down?
+      const res = d.res;
+      res.jnyL = (res.jnyL || []).filter(j => j.pos &&
+        j.pos.x / 1e6 >= sw.lng - pad && j.pos.x / 1e6 <= ne.lng + pad &&
+        j.pos.y / 1e6 >= sw.lat - pad && j.pos.y / 1e6 <= ne.lat + pad);
+      return res;
+    }
     async function poll() {
       if (!map || inFlight) return;
       inFlight = true;
@@ -642,13 +1758,17 @@
         const b = map.getBounds();
         if (!b) { inFlight = false; return; }
         const sw = b.getSouthWest(), ne = b.getNorthEast();
-        const res = await hafas('JourneyGeoPos', {
-          maxJny: 400, onlyRT: false,
-          rect: {
-            llCrd: { x: Math.round(sw.lng() * 1e6), y: Math.round(sw.lat() * 1e6) },
-            urCrd: { x: Math.round(ne.lng() * 1e6), y: Math.round(ne.lat() * 1e6) }
-          }
-        });
+        let res = null;
+        try { res = await pollProxy(sw, ne); } catch (e) { /* fall back below */ }
+        if (!res) {
+          res = await hafas('JourneyGeoPos', {
+            maxJny: 400, onlyRT: false,
+            rect: {
+              llCrd: { x: Math.round(sw.lng * 1e6), y: Math.round(sw.lat * 1e6) },
+              urCrd: { x: Math.round(ne.lng * 1e6), y: Math.round(ne.lat * 1e6) }
+            }
+          });
+        }
         ingest(res);
         lastOk = Date.now();
         $('err').hidden = true;
@@ -699,11 +1819,24 @@
       const seen = new Set();
       const counts = { tram: 0, bus: 0, regio: 0, night: 0, train: 0 };
 
+      const portions = new Set();
       for (const j of jnyL) {
         if (!j.pos) continue;
         const prod = prodL[j.prodX] || {};
         const kind = kindOf(prod);
-        counts[kind]++;
+        // The SBL "cable" line is the Schloßberglift — a vertical elevator inside
+        // the rock. It travels vertically (fixed point on a flat map) and isn't
+        // surface transit, so it's not shown as a moving vehicle: skip it.
+        if (kind === 'cable') continue;
+        // Portioned trains (EN 1277 = Warszawa + Bohumín sections coupled into
+        // one consist): several journeys, one physical train, identical coords.
+        // Same line at the same spot -> draw and count it once.
+        if (kind === 'train') {
+          const pk = lineName(prod) + '@' + Math.round(j.pos.x / 200) + ',' + Math.round(j.pos.y / 200);
+          if (portions.has(pk)) continue;
+          portions.add(pk);
+        }
+        counts[chipOf(kind)]++;
         const jid = j.jid;
         seen.add(jid);
         const to = { lat: j.pos.y / 1e6, lng: j.pos.x / 1e6 };
@@ -721,29 +1854,42 @@
         let delay = nextIdx >= 0 ? delayOf(st[nextIdx]) : null;
         if (delay == null) for (const x of st) { const d = delayOf(x); if (d != null) { delay = d; break; } }
         const meta = { kindName, origin: nameAt(0), dest: nameAt(st.length - 1), nextStop, nextTime, jid, delay };
+        // HAFAS ships a heading with every report: dirGeo, a 32-sector compass
+        // measured counterclockwise from EAST (verified against stop bearings:
+        // median error 6°). Without it, a vehicle points north until its second
+        // report — a few seconds of trams standing across the street.
+        const feedHead = (typeof j.dirGeo === 'number')
+          ? (90 - j.dirGeo * 11.25 + 360) % 360 : null;
         let v = vehicles.get(jid);
         if (!v) {
-          v = { kind, line, dir, from: to, to, t0: now, dur: 0, head: 0, ...meta };
+          v = { kind, line, dir, from: to, to, t0: now, dur: 0, head: feedHead ?? 0, ...meta };
           v.marker = makeMarker(v);
           v.marker.addListener('click', () => openInfo(v));
           vehicles.set(jid, v);
         } else {
-          // start a glide from the current interpolated spot to the new report
-          const cur = curPos(v, now);
-          if (cur.lat !== to.lat || cur.lng !== to.lng) v.head = bearing(cur, to);
+          // start a glide from the current interpolated spot to the new report.
+          // Heading is not set here: every frame, basePos() publishes the current
+          // direction of travel as v.targetHead and animate() turns the marker
+          // smoothly towards it. Standing still, the feed's heading is the target.
+          const cur = basePos(v, now);
+          if (cur.lat === to.lat && cur.lng === to.lng && feedHead != null) v.targetHead = feedHead;
+          // the proxy ships the street geometry between the two reports (j.pth):
+          // glide along it instead of the straight chord, which cuts corners
+          // through building blocks. Without pth the chord is the fallback.
+          v.route = buildGlidePath(cur, j.pth, to);
           v.from = cur; v.to = to; v.t0 = now; v.dur = 7000;
           v.kind = kind; v.line = line; v.dir = dir; Object.assign(v, meta);
           v.marker.setIcon(vIcon(v.kind, v.head, v.line));
-          if (v.tag) v.tag.setLabel(tagLabel(v.line));
         }
       }
       // remove vehicles that left the viewport / feed
       for (const [jid, v] of vehicles) {
-        if (!seen.has(jid)) { v.marker.setMap(null); if (v.tag) v.tag.setMap(null); vehicles.delete(jid); }
+        if (!seen.has(jid)) { v.marker.setMap(null); vehicles.delete(jid); }
       }
       deoverlap();
-      for (const k of ['tram', 'bus', 'regio', 'night', 'train']) $('ct-' + k).textContent = counts[k];
+      for (const k of ['tram', 'bus', 'regio', 'night', 'train']) setCount('ct-' + k, counts[k]);
       applyFilter();
+      updateOcclusion();
     }
 
     // Vehicles laying over at a terminus are often reported within a few metres of
@@ -771,34 +1917,145 @@
         }
         if (group.length < 2) continue;
         group.sort((a, b) => String(a.line).localeCompare(String(b.line)));  // stable across polls
-        const R = 0.00009;                                                   // ~10 m ring
+        // queue them along the road like vehicles waiting at a stand — each
+        // offset follows its own heading, so it stays on the asphalt instead
+        // of fanning sideways into the buildings
         group.forEach((v, k) => {
-          const ang = (k / group.length) * Math.PI * 2 - Math.PI / 2;
+          const d = (k - (group.length - 1) / 2) * 14;          // metres apart
+          const h = (v.head || 0) * Math.PI / 180;
           v.off = {
-            lat: Math.cos(ang) * R,
-            lng: Math.sin(ang) * R / Math.max(0.2, Math.cos(v.to.lat * Math.PI / 180))
+            lat: d * Math.cos(h) / 111320,
+            lng: d * Math.sin(h) / (111320 * Math.max(0.2, Math.cos(v.to.lat * Math.PI / 180)))
           };
         });
       }
     }
 
     const lerp = (a, b, t) => a + (b - a) * t;
-    function curPos(v, now) {
+    // Pre-measure a multi-point glide path: points, cumulative lengths, and the
+    // heading of each segment (so the marker can turn as it rounds the corner).
+    //
+    // The server's pth spans ITS previous report -> current report, but our
+    // marker sits mid-glide somewhere along that stretch. Naively walking the
+    // whole pth would first run BACKWARDS through vertices already passed —
+    // buses visibly sprinting back and forth. So: project `from` onto the
+    // shipped path and keep only what lies ahead of it.
+    function buildGlidePath(from, pth, to) {
+      if (!pth || !pth.length) return null;
+      const raw = [...pth.map(p => ({ lat: p[0] / 1e6, lng: p[1] / 1e6 })), to];
+      // nearest point on the raw path to `from` (bi = segment, bt = position on it)
+      let bi = 0, bt = 0, bd = Infinity;
+      for (let i = 0; i < raw.length - 1; i++) {
+        const a = raw[i], b = raw[i + 1];
+        const ky = 111320, kx = 111320 * Math.cos(from.lat * Math.PI / 180);
+        const px = (from.lng - a.lng) * kx, py = (from.lat - a.lat) * ky;
+        const bx = (b.lng - a.lng) * kx, by = (b.lat - a.lat) * ky;
+        const L2 = bx * bx + by * by;
+        const t = L2 ? Math.max(0, Math.min(1, (px * bx + py * by) / L2)) : 0;
+        const d = Math.hypot(px - t * bx, py - t * by);
+        if (d < bd) { bd = d; bi = i; bt = t; }
+      }
+      if (bd > 80) return null;                    // marker nowhere near this path — chord
+      // keep only what lies ahead of the marker: clamped to the path START means
+      // the marker still trails the whole pth (client lags the server by design)
+      // — keep everything. Otherwise drop the vertices it has already passed.
+      const ahead = (bi === 0 && bt === 0) ? raw : raw.slice(bi + 1);
+      if (!ahead.length) return null;              // already at the end — plain lerp
+      const pts = [from, ...ahead];
+      const cum = [0], heads = [];
+      for (let i = 1; i < pts.length; i++) {
+        cum.push(cum[i - 1] + metresBetween(pts[i - 1], pts[i]));
+        heads.push(bearing(pts[i - 1], pts[i]));
+      }
+      const total = cum[cum.length - 1];
+      if (total < 1) return null;                  // degenerate — plain lerp is fine
+      // a sane street path is barely longer than the chord; anything wildly
+      // longer means a bad projection — glide straight rather than sprint.
+      if (total > metresBetween(from, to) * 2.5 + 40) return null;
+      return { pts, cum, heads, total };
+    }
+    // Where the vehicle really is — WITHOUT the cosmetic de-overlap offset.
+    // All motion and heading math must use this; only rendering adds the offset
+    // (feeding the offset back into bearings once made two coupled night-train
+    // portions face each other nose-to-nose).
+    function basePos(v, now) {
       let p;
       if (!v.dur) p = v.to;
       else {
         const t = Math.min(1, (now - v.t0) / v.dur);
-        p = { lat: lerp(v.from.lat, v.to.lat, t), lng: lerp(v.from.lng, v.to.lng, t) };
+        const r = v.route;
+        if (r && t < 1) {
+          // walk the street path by distance
+          const d = r.total * t;
+          let i = 1;
+          while (i < r.cum.length - 1 && r.cum[i] < d) i++;
+          const seg = (r.cum[i] - r.cum[i - 1]) || 1;
+          const s = (d - r.cum[i - 1]) / seg;
+          p = { lat: lerp(r.pts[i - 1].lat, r.pts[i].lat, s), lng: lerp(r.pts[i - 1].lng, r.pts[i].lng, s) };
+          v.targetHead = r.heads[i - 1];          // face along the street segment
+        } else {
+          p = { lat: lerp(v.from.lat, v.to.lat, t), lng: lerp(v.from.lng, v.to.lng, t) };
+          if (t < 1 && (v.from.lat !== v.to.lat || v.from.lng !== v.to.lng))
+            v.targetHead = bearing(v.from, v.to); // face along the chord it travels
+        }
       }
+      return p;
+    }
+    function curPos(v, now) {
+      const p = basePos(v, now);
       return v.off ? { lat: p.lat + v.off.lat, lng: p.lng + v.off.lng } : p;
     }
+    // Retransform the existing silhouette in place (rotation + scale + label
+    // offset) — no SVG rebuild, cheap enough to run every frame. Crossing the
+    // detail threshold (~z16, with hysteresis so it can't flicker) does a full
+    // re-render to swap between silhouette and close-up artwork.
+    function updateVehTransform(v) {
+      const el = v.marker.el;
+      const S = vehScale();
+      const isDetail = el && el.dataset.detail === '1';
+      const wantDetail = isDetail ? S > 1.2 : S >= 1.3;
+      if (!el || isDetail !== wantDetail) { v.marker.setIcon(vIcon(v.kind, v.head, v.line)); return; }
+      const gr = el.querySelector('.gr'), gl = el.querySelector('.gl');
+      if (!gr || !gl) { v.marker.setIcon(vIcon(v.kind, v.head, v.line)); return; }
+      const L = vehLift(S);
+      const rot = 'rotate(' + v.head.toFixed(1) + ') scale(' + S.toFixed(3) + ')';
+      for (const sl of el.querySelectorAll('.sl'))
+        sl.setAttribute('transform', 'translate(0,' + (-L * +sl.dataset.f).toFixed(1) + ') ' + rot);
+      gr.setAttribute('transform', rot);
+      gl.setAttribute('transform', 'translate(0,' + (-L).toFixed(1) + ')');
+      const lb = el.querySelector('.vlabel');
+      if (lb) lb.style.top = (vehHalf(v.kind, isDetail) * S + 6) + 'px';
+    }
+    let lastScaleZoom = -1, lastPitch = -1;
     function animate() {
       const now = Date.now();
+      // while the zoom or the 3D tilt is animating, glide every marker with it
+      const z = map ? map.getZoom() : -1;
+      const pi = map ? map.getPitch() : 0;
+      if (Math.abs(z - lastScaleZoom) > 0.01 || Math.abs(pi - lastPitch) > 0.2) {
+        lastScaleZoom = z; lastPitch = pi;
+        for (const v of vehicles.values()) if (v.marker.getMap()) updateVehTransform(v);
+        for (const m of stops.values()) {
+          const svg = m.el && m.el.firstElementChild;
+          if (svg) {
+            const s = stopPx(m.__tram);
+            svg.setAttribute('width', s); svg.setAttribute('height', s);
+            svg.style.left = (-s / 2) + 'px'; svg.style.top = (-s / 2) + 'px';
+          }
+        }
+      }
       for (const v of vehicles.values()) {
         if (v.marker.getMap()) {
-          const p = curPos(v, now);
-          v.marker.setPosition(p);
-          if (v.tag) v.tag.setPosition(p);
+          v.marker.setPosition(curPos(v, now));
+          // always face the direction of travel: chase the target heading along
+          // the shortest arc, ~15%/frame — reads as a vehicle steering, not snapping
+          if (v.targetHead != null) {
+            const d = ((v.targetHead - v.head + 540) % 360) - 180;
+            if (Math.abs(d) > 0.3) {
+              v.head = (v.head + d * 0.15 + 360) % 360;
+              updateVehTransform(v);
+            }
+          }
         }
       }
       requestAnimationFrame(animate);
@@ -807,21 +2064,171 @@
     function applyFilter() {
       let shown = 0;
       for (const v of vehicles.values()) {
-        const on = filters[v.kind];
+        const on = filters[chipOf(v.kind)];
         v.marker.setMap(on ? map : null);
-        if (v.tag) v.tag.setMap(on ? map : null);
         if (on) shown++;
       }
       return shown;
     }
+
+    // ---------- vehicle occlusion (3D mode) ----------
+    // DOM markers always paint on top of the GL canvas, so a vehicle passing
+    // behind a tall extrusion looks like it drives THROUGH the facade. True
+    // per-pixel depth is impossible for DOM markers; instead, when pitched we
+    // test each vehicle's line of sight and fade occluded ones to ghosts.
+    // Two occluder sources: CARTO's b3d extrusions (any rendered feature that
+    // covers the vehicle's ground-anchor pixel must be NEARER than the vehicle
+    // — geometry behind it projects above the anchor at pitch, never onto it)
+    // and our three.js landmarks (invisible to queryRenderedFeatures, so their
+    // footprints are ray-tested from LMK_OCC: camera ray altitude at the
+    // crossing point vs building height).
+    function llLocal(L, lng, lat) {
+      return [(lng - L.lng) * 111320 * Math.cos(L.lat * Math.PI / 180), (lat - L.lat) * 110540];
+    }
+    // smallest t along A->B where the segment enters poly (0 if A is inside)
+    function segPolyMinT(A, B, poly) {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+        if (((yi > A[1]) != (yj > A[1])) && (A[0] < (xj - xi) * (A[1] - yi) / (yj - yi) + xi)) inside = !inside;
+      }
+      if (inside) return 0;
+      const dx = B[0] - A[0], dy = B[1] - A[1];
+      let best = null;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const ex = poly[j][0], ey = poly[j][1], fx = poly[i][0] - ex, fy = poly[i][1] - ey;
+        const den = dx * fy - dy * fx;
+        if (Math.abs(den) < 1e-9) continue;
+        const t = ((ex - A[0]) * fy - (ey - A[1]) * fx) / den;
+        const u = ((ex - A[0]) * dy - (ey - A[1]) * dx) / den;
+        if (t > 0 && t < 1 && u >= 0 && u <= 1 && (best == null || t < best)) best = t;
+      }
+      return best;
+    }
+    // ---------- clickable landmarks ----------
+    // The models are GL geometry (no DOM events), so taps are resolved
+    // geometrically: a click on a tall facade corresponds to a ground point
+    // further DOWN-screen (the vertical axis projects to ~sin(pitch) px/m), so
+    // we walk the click point down-screen through the landmark's height and
+    // point-in-polygon test each unprojected sample against the footprints.
+    function ptInPoly(A, poly) {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+        if (((yi > A[1]) != (yj > A[1])) && (A[0] < (xj - xi) * (A[1] - yi) / (yj - yi) + xi)) inside = !inside;
+      }
+      return inside;
+    }
+    function landmarkHit(px) {
+      if (!map || !pitched || !LMK_OCC.length) return null;
+      let mpp;
+      try {
+        mpp = 40075016.686 * Math.cos(map.getCenter().lat * Math.PI / 180) / map.transform.worldSize;
+      } catch (e) { return null; }
+      const vfac = Math.sin(map.getPitch() * Math.PI / 180) / mpp;   // screen px per metre of height
+      for (const L of LMK_OCC) {
+        const cosL = Math.cos(L.lat * Math.PI / 180);
+        for (const part of L.polys) {
+          const hPx = part.h * vfac;
+          for (let s = 0; s <= 8; s++) {
+            const g = map.unproject([px.x, px.y + hPx * s / 8]);
+            const A = [(g.lng - L.lng) * 111320 * cosL, (g.lat - L.lat) * 110540];
+            if (Math.abs(A[0]) > 300 || Math.abs(A[1]) > 300) break;   // far from this landmark
+            if (ptInPoly(A, part.p)) return L;
+          }
+        }
+      }
+      return null;
+    }
+    function openLandmark(L, lngLat) {
+      const node = document.createElement('div');
+      node.className = 'iw';
+      node.innerHTML = '<b>' + esc(L.name) + '</b>' +
+        '<div style="margin-top:5px;color:var(--muted);font-size:.82rem;line-height:1.45;max-width:240px">' + esc(L.info) + '</div>';
+      info.setContent(node);
+      info.open({ lngLat });
+    }
+
+    function updateOcclusion() {
+      if (!map) return;
+      const on = pitched && map.getPitch() > 5 && map.getZoom() >= 15;
+      let cam = null, camAlt = 0;
+      // this MapLibre build has no getFreeCameraOptions(); derive the camera
+      // from the transform: it sits cameraToCenterDistance px behind the center
+      // along the reverse bearing, tilted by pitch.
+      if (on) try {
+        const tr = map.transform, c = map.getCenter();
+        const cosLat = Math.cos(c.lat * Math.PI / 180);
+        const mpp = 40075016.686 * cosLat / tr.worldSize;      // metres per screen px at center
+        const dM = tr.cameraToCenterDistance * mpp;
+        const pr = map.getPitch() * Math.PI / 180, az = map.getBearing() * Math.PI / 180 + Math.PI;
+        camAlt = dM * Math.cos(pr);
+        const horiz = dM * Math.sin(pr);
+        cam = { lng: c.lng + Math.sin(az) * horiz / (111320 * cosLat),
+                lat: c.lat + Math.cos(az) * horiz / 110540 };
+      } catch (e) {}
+      for (const v of vehicles.values()) {
+        const el = v.marker.el;
+        if (!el || !v.marker.getMap()) continue;
+        let occ = false;
+        if (cam) {
+          const p = v.marker.getPosition();
+          for (const L of LMK_OCC) {                    // our landmark models
+            const A = llLocal(L, p.lng, p.lat);
+            if (Math.abs(A[0]) > 400 || Math.abs(A[1]) > 400) continue;
+            const B = llLocal(L, cam.lng, cam.lat);
+            for (const part of L.polys) {
+              const t = segPolyMinT(A, B, part.p);
+              if (t != null && part.h > camAlt * t + 2) { occ = true; break; }
+            }
+            if (occ) break;
+          }
+          if (!occ) try {                               // CARTO extrusions
+            // queryRenderedFeatures at the anchor pixel returns ANY prism whose
+            // projection covers it — including tall buildings BEHIND the
+            // vehicle — so it only supplies candidates; the actual front/behind
+            // decision is the same ground-ray test as for landmarks: does the
+            // footprint cross the vehicle→camera sight line low enough to block.
+            const px = map.project([p.lng, p.lat]);
+            if (px.x >= 0 && px.y >= 0 && px.x <= innerWidth && px.y <= innerHeight) {
+              const Lv = { lng: p.lng, lat: p.lat };
+              const B = llLocal(Lv, cam.lng, cam.lat);
+              for (const f of map.queryRenderedFeatures(px, { layers: ['b3d'] })) {
+                const pr = f.properties || {};
+                const h = pr.render_height != null ? pr.render_height : (pr.height != null ? pr.height : 12);
+                const g = f.geometry;
+                const rings = g.type === 'Polygon' ? [g.coordinates[0]]
+                  : g.type === 'MultiPolygon' ? g.coordinates.map(c => c[0]) : [];
+                for (const ring of rings) {
+                  const t = segPolyMinT([0, 0], B, ring.map(q => llLocal(Lv, q[0], q[1])));
+                  if (t != null && h > camAlt * t + 2) { occ = true; break; }
+                }
+                if (occ) break;
+              }
+            }
+          } catch (e) {}
+        }
+        // NB: not el.style.opacity — MapLibre's Marker rewrites the root
+        // element's opacity on every move, silently undoing it. Children are ours.
+        const o = occ ? 0.3 : '';
+        for (const ch of el.children) ch.style.opacity = o;
+      }
+    }
+    // update a counter with a tiny pop so changes catch the eye
+    function setCount(id, val) {
+      const el = $(id), s = String(val);
+      if (el.textContent === s) return;
+      el.textContent = s;
+      el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+    }
     function updateLive() {
       const fresh = Date.now() - lastOk < 20000 && lastOk > 0;
-      const n = [...vehicles.values()].filter(v => filters[v.kind]).length;
+      const n = [...vehicles.values()].filter(v => filters[chipOf(v.kind)]).length;
       if (document.body.classList.contains('panel-peek')) updatePeek();
       $('live').classList.toggle('stale', !fresh);
       $('live').title = fresh ? 'live feed OK' : 'live feed interrupted';
-      $('ct-stops').textContent = !stopsOn ? '–'
-        : (map && map.getZoom() < STOP_MIN_ZOOM) ? '·' : stops.size;
+      setCount('ct-stops', !stopsOn ? '–'
+        : (map && map.getZoom() < STOP_MIN_ZOOM) ? '·' : stops.size);
       if (!fresh) {
         $('livetxt').textContent = lastOk ? 'reconnecting to the live feed…' : 'connecting…';
       } else if (n > 0) {
@@ -848,7 +2255,7 @@
       return pts;
     }
     let routeLine = null;
-    function clearRoute() { if (routeLine) { routeLine.setMap(null); routeLine = null; } }
+    function clearRoute() { if (routeLine) { removeLine('route'); routeLine = null; } }
 
     async function drawRoute(v, box, extras) {
       try {
@@ -856,10 +2263,9 @@
         const poly = res.common && res.common.polyL && res.common.polyL[0];
         if (poly && poly.crdEncYX) {
           clearRoute();
-          routeLine = new google.maps.Polyline({
-            path: decodePath(poly.crdEncYX), map,
-            strokeColor: KIND_COLOR[v.kind](), strokeOpacity: 0.75, strokeWeight: 4, zIndex: 1
-          });
+          setLine('route', decodePath(poly.crdEncYX),
+            { 'line-color': KIND_COLOR[v.kind](), 'line-opacity': 0.75, 'line-width': 4 });
+          routeLine = 'route';
         }
         if (extras) {
           const remL = (res.common && res.common.remL) || [];
@@ -956,7 +2362,7 @@
       box.appendChild(extras);
 
       info.setContent(box);
-      info.open({ map, anchor: v.marker });
+      info.open({ anchor: v.marker });
       drawRoute(v, box, extras);
     }
     function showErr(msg) { $('err').textContent = msg; $('err').hidden = false; }
@@ -1032,20 +2438,18 @@
     }
     function dropPin(which, pos, label) {
       if (pins[which]) pins[which].setMap(null);
-      pins[which] = new google.maps.Marker({
-        map, position: pos, zIndex: 60, title: label,
-        icon: {
-          path: 'M 0,0 C -6,-9 -9,-13 -9,-17 a 9,9 0 1 1 18,0 c 0,4 -3,8 -9,17 z',
-          fillColor: which === 'from' ? cssv('--ok') : cssv('--accent'), fillOpacity: 1,
-          strokeColor: '#fff', strokeWeight: 2, scale: 1, anchor: new google.maps.Point(0, 0)
-        },
-        label: { text: which === 'from' ? 'A' : 'B', color: '#fff', fontSize: '10px', fontWeight: '700' }
-      });
-      pins[which].getIcon().labelOrigin = new google.maps.Point(0, -17);
+      const col = which === 'from' ? cssv('--ok') : cssv('--accent');
+      const el = document.createElement('div'); el.className = 'pinm';
+      el.innerHTML =
+        '<svg width="26" height="34" viewBox="-13 -30 26 34" style="position:absolute;left:-13px;top:-30px;overflow:visible">' +
+          '<path d="M 0,0 C -6,-9 -9,-13 -9,-17 a 9,9 0 1 1 18,0 c 0,4 -3,8 -9,17 z" fill="' + col + '" stroke="#fff" stroke-width="2"/>' +
+          '<text x="0" y="-13" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">' + (which === 'from' ? 'A' : 'B') + '</text>' +
+        '</svg>';
+      pins[which] = new Mk({ map, position: { lat: pos.lat, lng: pos.lng }, element: el, title: label, zIndex: 9990 });
     }
     // pick a point on the map: label it by the nearest stop when there is one
     async function pickPoint(which, latLng) {
-      const crd = { x: Math.round(latLng.lng() * 1e6), y: Math.round(latLng.lat() * 1e6) };
+      const crd = { x: Math.round(latLng.lng * 1e6), y: Math.round(latLng.lat * 1e6) };
       let name = 'Map point';
       try {
         const res = await hafas('LocGeoPos', {
@@ -1065,7 +2469,7 @@
       const h = +t.slice(0, 2), m = +t.slice(2, 4);
       return h ? h + ' h ' + m + ' min' : m + ' min';
     };
-    function clearTripLine() { if (tripLine) { tripLine.setMap(null); tripLine = null; } }
+    function clearTripLine() { if (tripLine) { removeLine('trip'); tripLine = null; } }
 
     function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
@@ -1182,7 +2586,7 @@
             : { crd: { x: Math.round(item.lon * 1e6), y: Math.round(item.lat * 1e6) }, name: item.name };
           $(which).value = item.name;
           box.hidden = true;
-          if (map) dropPin(which, new google.maps.LatLng(item.lat, item.lon), item.name);
+          if (map) dropPin(which, { lat: item.lat, lng: item.lon }, item.name);
           updateClearBtn();
         });
         box.appendChild(row);
@@ -1311,7 +2715,7 @@
             const w = document.createElement('span');
             w.className = 'walk';
             const mins = sec.gis && sec.gis.dur ? Math.round(+String(sec.gis.dur).slice(-4, -2) || 0) : null;
-            w.textContent = '🚶' + (mins ? ' ' + mins + '′' : '');
+            w.innerHTML = ICON_WALK + (mins ? ' ' + mins + '′' : '');
             chain.appendChild(w);
           }
           first = false;
@@ -1347,7 +2751,7 @@
             const dir = sec.jny.dirTxt ? document.createElement('div') : null;
             if (dir) { dir.className = 'walk'; dir.textContent = 'Richtung ' + sec.jny.dirTxt; txt.appendChild(dir); }
           } else {
-            txt.textContent = '🚶 ' + dn + ' → ' + an;
+            txt.innerHTML = ICON_WALK + ' ' + esc(dn) + ' → ' + esc(an);
           }
           row.append(t, txt);
           legs.appendChild(row);
@@ -1374,12 +2778,11 @@
         if (poly && poly.crdEncYX) path.push(...decodePath(poly.crdEncYX));
       }
       if (path.length && map) {
-        tripLine = new google.maps.Polyline({
-          path, map, strokeColor: cssv('--accent'), strokeOpacity: .9, strokeWeight: 5, zIndex: 2
-        });
-        const b = new google.maps.LatLngBounds();
-        path.forEach(pt => b.extend(pt));
-        map.fitBounds(b, 60);
+        setLine('trip', path, { 'line-color': cssv('--accent'), 'line-opacity': 0.9, 'line-width': 5 });
+        tripLine = 'trip';
+        const b = new maplibregl.LngLatBounds();
+        path.forEach(pt => b.extend([pt.lng, pt.lat]));
+        map.fitBounds(b, { padding: 60 });
       }
     }
 
@@ -1389,15 +2792,29 @@
       const t = document.documentElement.dataset.theme;
       return t ? t === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
+    const ICON_SUN =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">' +
+      '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5 5l1.7 1.7M17.3 17.3L19 19M19 5l-1.7 1.7M6.7 17.3L5 19"/></svg>';
+    const ICON_MOON =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">' +
+      '<path d="M20.4 13.2A8.4 8.4 0 1 1 10.8 3.6a6.8 6.8 0 0 0 9.6 9.6z"/></svg>';
+    window.ICON_WALK =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;vertical-align:-2px">' +
+      '<circle cx="13.2" cy="4.3" r="1.9" fill="currentColor" stroke="none"/>' +
+      '<path d="M13 7.5l-1.8 5 2.8 2.7.8 4.6M11.2 12.5l-2.6 1.8-.9 3.9M13 7.5l2.8 1.8 2 2.6"/></svg>';
     try { const s = localStorage.getItem('bm_theme'); if (s) document.documentElement.dataset.theme = s; } catch (e) {}
-    $('themebtn').textContent = isDark() ? '☀️' : '🌙';
+    $('themebtn').innerHTML = isDark() ? ICON_SUN : ICON_MOON;
+    $('btn3d').addEventListener('click', () => {
+      pitched = !pitched;
+      try { localStorage.setItem('bm_3d', pitched ? '1' : '0'); } catch (e) {}
+      apply3D();
+    });
     $('themebtn').addEventListener('click', () => {
       const next = isDark() ? 'light' : 'dark';
       document.documentElement.dataset.theme = next;
       try { localStorage.setItem('bm_theme', next); } catch (e) {}
-      $('themebtn').textContent = next === 'dark' ? '☀️' : '🌙';
-      paintChips();
-      rebuildMap();
+      $('themebtn').innerHTML = next === 'dark' ? ICON_SUN : ICON_MOON;
+      setTheme();
     });
 
     // ---------- panel + boot ----------
@@ -1425,7 +2842,7 @@
       if (c) setTimeout(() => { if (map) map.setCenter(c); }, 320);
     }
     function updatePeek() {
-      const n = [...vehicles.values()].filter(v => filters[v.kind]).length;
+      const n = [...vehicles.values()].filter(v => filters[chipOf(v.kind)]).length;
       const where = trip.from || trip.to ? 'tap to finish planning' : 'tap to plan a trip';
       $('peek').textContent = n ? n + ' vehicles moving · ' + where : where;
     }
@@ -1476,7 +2893,18 @@
       updatePeek();
     }
 
-    ensureMaps();
+    // maplibre-gl.js is deferred, so it hasn't executed yet when this inline
+    // script runs — but deferred scripts always finish before DOMContentLoaded.
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initMap);
+    } else {
+      initMap();
+    }
+
+    // PWA: cache the shell for instant, installable loads (live data stays online)
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+    }
   })();
   </script>
 </body>

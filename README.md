@@ -1,7 +1,8 @@
 # BimRadar
 
 Live map of Graz trams (*Bims*) and buses — watch them move in real time, browse
-stop departures, and plan a trip. One HTML file, no build step, no backend.
+stop departures, plan a trip, and explore a hand-modeled 3D Graz. One HTML file,
+no build step, no keys; plus an optional 40-line feed proxy.
 
 **Live:** <https://bimradar.at>
 
@@ -21,11 +22,19 @@ stop departures, and plan a trip. One HTML file, no build step, no backend.
   Results show the chain of vehicles to take (`[S3] › 🚶 › [4]`), and the chosen
   journey draws on the map.
 - Light/dark, and a proper bottom sheet on mobile with drag-to-peek.
+- **3D mode.** Tilted camera with extruded buildings (real heights from the CARTO
+  tiles), vehicles as grounded top-down models with fake extrusion — and **15
+  hand-modeled Graz landmarks** built procedurally in three.js from their real
+  OSM footprints: Uhrturm, Glockenturm, Murinsel, Kunsthaus, Herz-Jesu-Kirche,
+  Mausoleum, Dom, Burg, Oper and more. **Tap a landmark for its story.**
+  Vehicles passing behind buildings fade to ghosts (per-vehicle line-of-sight
+  occlusion — DOM markers can't be depth-tested, so it's done geometrically).
+- **Installable PWA** with an offline app shell.
 
 ## Where the data comes from
 
-Everything is fetched **client-side** from the Verkehrsverbund Steiermark's HAFAS
-instance — the same platform behind the official BusBahnBim app:
+Everything comes from the Verkehrsverbund Steiermark's HAFAS instance — the same
+platform behind the official BusBahnBim app:
 
 | Call | Used for |
 |---|---|
@@ -35,6 +44,18 @@ instance — the same platform behind the official BusBahnBim app:
 | `StationBoard` | live departures at a stop |
 | `LocMatch` | trip-planner autocomplete |
 | `TripSearch` | journey planning |
+
+In production a tiny server-side poller (`tools/feed_poller.py`, run via systemd)
+polls `JourneyGeoPos` for the whole Graz area every 5 s, snaps positions onto the
+route polylines, ships the street geometry between reports, and atomically writes
+a static `/api/vehicles.json` that nginx serves to every client — one upstream
+request instead of one per user. Without it the client transparently falls back
+to querying HAFAS directly.
+
+Basemap tiles are keyless [CARTO](https://carto.com) vector styles rendered with
+a self-hosted, pinned [MapLibre GL](https://maplibre.org) (BSD-3); the 3D
+landmarks use a self-hosted [three.js](https://threejs.org) (MIT), lazy-loaded
+the first time 3D is switched on.
 
 Canonical line names come from the official GTFS feed
 (© [Mobilitätsverbünde Österreich](https://data.mobilitaetsverbuende.at),
@@ -56,28 +77,21 @@ The underlying data is produced by the operators who run the vehicles: Graz Lini
 
 ## Running it
 
-It's one file plus a small JSON:
+No keys, no build step — serve the folder and open it:
 
 ```bash
 python3 -m http.server 8000   # then open http://localhost:8000
 ```
 
-You need a **Google Maps JavaScript API** key and a **vector Map ID**, set near the
-top of the script:
+Everything (MapLibre, three.js, icons) is vendored and pinned, so it works
+offline-first out of the box. The optional feed proxy is a single script:
 
-```js
-const GMAPS_KEY = 'your-key';
-const MAP_ID    = 'your-vector-map-id';
+```bash
+python3 tools/feed_poller.py  # writes api/vehicles.json every 5 s
 ```
 
-The Map ID must be created with **Vector** rendering — raster tiles show visible
-seams under a dark style. Because a `mapId` and a `styles` array are mutually
-exclusive, POI/transit-icon hiding is done with a cloud map style attached to the
-Map ID (otherwise Google's own transit icons duplicate our stop badges).
-
-The key committed here is a browser key restricted by HTTP referrer to this app's
-domains and capped by quota. Browser Maps keys are inherently public — use your
-own, restricted to your domain, if you fork this.
+— point it at a directory your web server serves as `/api/`, or skip it entirely
+(the client falls back to direct HAFAS queries, just a little slower).
 
 ## Licence
 
