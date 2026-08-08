@@ -2,7 +2,8 @@
 
 Live map of Graz trams (*Bims*) and buses — watch them move in real time, browse
 stop departures, plan a trip, and explore a hand-modeled 3D Graz. One HTML file,
-no build step, no keys; plus an optional 40-line feed proxy.
+no build step, no keys; plus an optional zero-dependency Node feed proxy.
+JavaScript all the way down.
 
 **Live:** <https://bimradar.at>
 
@@ -45,7 +46,7 @@ platform behind the official BusBahnBim app:
 | `LocMatch` | trip-planner autocomplete |
 | `TripSearch` | journey planning |
 
-In production a tiny server-side poller (`tools/feed_poller.py`, run via systemd)
+In production a tiny server-side poller (`tools/feed_poller.js`, run via systemd)
 polls `JourneyGeoPos` for the whole Graz area every 5 s, snaps positions onto the
 route polylines, ships the street geometry between reports, and atomically writes
 a static `/api/vehicles.json` that nginx serves to every client — one upstream
@@ -77,21 +78,24 @@ The underlying data is produced by the operators who run the vehicles: Graz Lini
 
 ## Running it
 
-No keys, no build step — serve the folder and open it:
+No keys, no build step — serve the folder with any static file server and open it:
 
 ```bash
-python3 -m http.server 8000   # then open http://localhost:8000
+npx serve .                   # or: python3 -m http.server, nginx, anything
 ```
 
 Everything (MapLibre, three.js, icons) is vendored and pinned, so it works
-offline-first out of the box. The optional feed proxy is a single script:
+offline-first out of the box. The optional feed proxy is a single script with
+zero npm dependencies (Node ≥ 18):
 
 ```bash
-python3 tools/feed_poller.py  # writes api/vehicles.json every 5 s
+node tools/feed_poller.js     # writes api/vehicles.json every 5 s
 ```
 
 — point it at a directory your web server serves as `/api/`, or skip it entirely
-(the client falls back to direct HAFAS queries, just a little slower).
+(the client falls back to direct HAFAS queries, just a little slower). The PWA
+icons are reproducible with `node tools/gen_icons.js <outDir>` — also
+dependency-free (hand-rolled PNG encoder on top of `node:zlib`).
 
 ## Licence
 
