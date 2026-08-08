@@ -1571,7 +1571,10 @@
               { name: 'Herz-Jesu-Kirche', info: 'Neo-Gothic by Georg Hauberrisser (1881-1887). At 109.6 m the tallest church tower in Styria and the third-tallest in Austria.',
                 lng: 15.455777,  lat: 47.069640,  polys: HJ_PARTS.map(pt => ({ p: pt.p, h: pt.h })) },
               { name: 'Kunsthaus "Friendly Alien"', info: "Museum of contemporary art by Peter Cook & Colin Fournier (2003), with the BIX media facade. Next door: the Eisernes Haus (1848), continental Europe's oldest cast-iron building.",
-                lng: 15.434015,  lat: 47.0712985, polys: [{ p: BLOB, h: 22 }, { p: EISEN, h: 10 }] },
+                lng: 15.434015,  lat: 47.0712985, polys: [
+                  { p: BLOB, h: 22 },
+                  { p: EISEN, h: 10, n: 'Eisernes Haus', i: "Continental Europe's oldest cast-iron building (1848), now housing part of the Kunsthaus." }
+                ] },
               { name: 'Mausoleum', info: "Tomb of Emperor Ferdinand II with St Catherine's Church (from 1614, Pietro de Pomis) - Mannerism, part of the Graz 'city crown'.",
                 lng: 15.4426221, lat: 47.0716735, polys: [{ p: MZ_BODY, h: 18 }, { p: [[10,3],[19,3],[19,12],[10,12]], h: 34 }] },
               { name: 'Rathaus', info: 'Graz City Hall on Hauptplatz (1887-1893, historicist style). Seat of the mayor and the city council.',
@@ -1589,7 +1592,11 @@
               { name: 'Leechkirche', info: 'Consecrated in 1293 - the oldest surviving building in Graz. Early-Gothic church of the Teutonic Order, on the university campus.',
                 lng: 15.4467468, lat: 47.0755519, polys: [{ p: LK_POLY, h: 19 }, { p: [[-14,-2],[-9,-2],[-9,4],[-14,4]], h: 33 }] },
               { name: 'Grazer Burg', info: 'Residence of Emperor Frederick III (from 1438), today the seat of the Styrian state government. Famous for its Gothic double-spiral staircase (1499). With the Burgtor gate to the Stadtpark.',
-                lng: 15.44233,   lat: 47.072855,  polys: [{ p: BG_OUTER, h: 17 }, { p: BG_W, h: 15.5 }, { p: BT_POLY, h: 11 }] },
+                lng: 15.44233,   lat: 47.072855,  polys: [
+                  { p: BG_OUTER, h: 17 },
+                  { p: BG_W, h: 15.5, n: 'West Wing', i: "The western wing of the Burg complex, toward the Hofgasse." },
+                  { p: BT_POLY, h: 11, n: 'Burgtor', i: "The castle gate - the historic passage between the old town and the Stadtpark ring." }
+                ] },
               { name: 'Paulustor', info: 'Renaissance city gate of the outer fortifications (c. 1620) at the foot of the Schlossberg.',
                 lng: 15.440834,  lat: 47.075953,  polys: [{ p: PT_BLOCK, h: 14 }] },
               { name: 'Stadthalle Graz', info: 'Multi-purpose hall of the Graz trade fair by Klaus Kada (2002) - a vast glass hall for fairs, concerts and sport, holding up to ~14,000 guests.',
@@ -1597,9 +1604,25 @@
               { name: 'TU Graz — Alte Technik', info: 'Main building of Graz University of Technology on Rechbauerstrasse (opened 1888, historicist style) - the heart of the oldest TU campus.',
                 lng: 15.450314,  lat: 47.069085,  polys: [{ p: TU_OUT, h: 18 }] },
               { name: 'TU Graz — Neue Technik', info: "Second main building of Graz University of Technology on Stremayrgasse (opened 1912) - home of the chemistry institutes. Together with the Alte Technik it frames the historic TU campus.",
-                lng: 15.4508763, lat: 47.0649005, polys: [{ p: NT_POLY, h: 19 }, { p: NT_CHEM, h: 18 }, { p: NT_MATH, h: 18 }, { p: NT_BIO, h: 15 }, { p: NT_LIB, h: 21 }, { p: NT_PHY1, h: 21 }, { p: NT_PHY2, h: 21 }, { p: NT_WAS, h: 12 }] },
+                lng: 15.4508763, lat: 47.0649005, polys: [
+                  { p: NT_POLY, h: 19, n: 'Main Building (1912)', i: "The historicist second main building of the TU - opened 1912, crowned risalit toward Kopernikusgasse." },
+                  { p: NT_CHEM, h: 18, n: 'Chemistry Institutes', i: "Analytical, inorganic, organic and physical chemistry under one long roof on Stremayrgasse." },
+                  { p: NT_MATH, h: 18, n: 'Mathematics & Geodesy', i: "Institute building for mathematics and geodesy on the south-eastern corner of the campus." },
+                  { p: NT_BIO, h: 15, n: 'Biochemistry', i: "The biochemistry institute block on the north-east of the campus." },
+                  { p: NT_LIB, h: 21, n: 'NAWI Library', i: "Natural-sciences branch library shared by TU Graz and Uni Graz under the NAWI Graz co-operation." },
+                  { p: NT_PHY1, h: 21, n: 'Physics Institutes', i: "The physics complex of the Neue Technik campus." },
+                  { p: NT_PHY2, h: 21, n: 'Physics Institutes', i: "The physics complex of the Neue Technik campus." },
+                  { p: NT_WAS, h: 12, n: 'Hydraulic Engineering', i: "Institutes for hydraulic engineering and water management, with their flow-machinery labs." }
+                ] },
               { name: 'Anton Paar', info: "Headquarters of Anton Paar, Graz's maker of precision measuring instruments - density meters, rheometers and lab analytics exported worldwide. Founded in 1922 as a one-man locksmith's workshop.",
-                lng: 15.404004,  lat: 47.031157,  polys: [{ p: AP_HQ, h: 23 }, { p: AP_OFF6, h: 23 }, { p: AP_OFF3, h: 14 }, { p: AP_GAR, h: 12 }, { p: AP_HALL, h: 8 }, { p: AP_SE, h: 8 }] },
+                lng: 15.404004,  lat: 47.031157,  polys: [
+                  { p: AP_HQ, h: 23, n: 'Headquarters', i: "The long glass headquarters bar - management, sales and the famous in-house R&D." },
+                  { p: AP_OFF6, h: 23, n: 'Office Building', i: "Six-storey glass office building for the growing R&D and administration teams." },
+                  { p: AP_OFF3, h: 14, n: 'Office Block North', i: "Three-storey office wing on the northern edge of the campus." },
+                  { p: AP_GAR, h: 12, n: 'Parking Garage', i: "Four open parking decks for the campus workforce." },
+                  { p: AP_HALL, h: 8, n: 'Production Hall', i: "The main production hall around its courtyard - where the density meters and rheometers are actually built." },
+                  { p: AP_SE, h: 8, n: 'South-East Hall', i: "Production and logistics hall on the south-eastern corner of the site." }
+                ] },
               { name: 'Uni Graz — Hauptgebäude', info: "Main building of the University of Graz on Universitaetsplatz (1895, historicist style). The university itself is Austria's second-oldest, founded in 1585.",
                 lng: 15.449878,  lat: 47.077747,  polys: [{ p: UNI_OUT, h: 17 }] }
             );
@@ -1677,7 +1700,7 @@
         map.on('click', e => {
           if (armed && e.lngLat) { pickPoint(armed, e.lngLat); return; }
           const lm = landmarkHit(e.point);
-          if (lm) { openLandmark(lm, e.lngLat); return; }
+          if (lm) { openLandmark(lm.L, lm.part, e.lngLat); return; }
           info.close(); clearRoute();
         });
         apply3D();
@@ -2370,17 +2393,20 @@
             const g = map.unproject([px.x, px.y + hPx * s / 8]);
             const A = [(g.lng - L.lng) * 111320 * cosL, (g.lat - L.lat) * 110540];
             if (Math.abs(A[0]) > 300 || Math.abs(A[1]) > 300) break;   // far from this landmark
-            if (ptInPoly(A, part.p)) return L;
+            if (ptInPoly(A, part.p)) return { L, part };
           }
         }
       }
       return null;
     }
-    function openLandmark(L, lngLat) {
+    function openLandmark(L, part, lngLat) {
       const node = document.createElement('div');
       node.className = 'iw';
-      node.innerHTML = '<b>' + esc(L.name) + '</b>' +
-        '<div style="margin-top:5px;color:var(--muted);font-size:.82rem;line-height:1.45;max-width:240px">' + esc(L.info) + '</div>';
+      const title = (part && part.n) || L.name;
+      const text = (part && part.i) || L.info;
+      node.innerHTML = '<b>' + esc(title) + '</b>' +
+        ((part && part.n) ? '<div style="margin-top:2px;color:var(--muted);font-size:.72rem;letter-spacing:.02em">' + esc(L.name) + '</div>' : '') +
+        '<div style="margin-top:5px;color:var(--muted);font-size:.82rem;line-height:1.45;max-width:240px">' + esc(text) + '</div>';
       info.setContent(node);
       info.open({ lngLat });
     }
