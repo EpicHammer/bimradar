@@ -627,7 +627,8 @@
       29983017, 29983018,                                          // TU Alte Technik member ways
       4399927, 8143951,                                            // Uni Graz Hauptgebäude member ways
       75042781,                                                    // TU Neue Technik
-      1039587147, 171711442, 1039587145                             // Anton Paar HQ + production hall (+ hall courtyard)
+      1039587147, 171711442, 1039587145,                            // Anton Paar HQ + production hall (+ hall courtyard)
+      1182262494, 235998054, 338134241, 473840147, 171711447        // Anton Paar campus: offices, garage, halls
       // NB: CARTO renders the Burg relation itself as feature id 67773 — that id is
       // PROVABLY reused for unrelated buildings in other tiles, so it must NOT be
       // hidden; the model encloses that extrusion instead (same footprint, taller).
@@ -1440,27 +1441,45 @@
             ntg.position.set((mcNt.x - T.x) / T.scale, 0, (mcNt.y - T.y) / T.scale);
             scene.add(ntg);
 
-            // ---- Anton Paar headquarters (Straßgang) ----
-            // ~5 km SW. The instrument maker's campus: a long glass office bar
-            // (dark plinth, mullioned glass, white fascia with the brand's RED
-            // accent line) beside the low production hall with its courtyard.
+            // ---- Anton Paar campus (Straßgang) ----
+            // ~5 km SW. The instrument maker's whole campus from its real
+            // footprints: three glass office buildings in a shared family look
+            // (dark plinth, mullioned glass, white roof plate with the brand's
+            // thin RED accent line under the rim), the four-deck parking
+            // garage, and the low production halls with their courtyard.
             const AP_HQ = [[-50.8,7.4],[-27.9,8.1],[-19.2,8.1],[13.9,8.1],[21.6,7.9],[51.0,8.2],[50.8,-4.9],[45.3,-4.9],[-19.2,-5.1],[-23.2,-5.1],[-27.2,-5.2],[-27.1,-8.3],[-51.0,-8.3]];
             const AP_HALL = [[-84.5,137.6],[-80.4,57.2],[-19.4,61.3],[-20.8,84.1],[-23.1,120.7],[-13.2,121.2],[-13.8,140.7]];
             const AP_HALL_H = [[-51.9,109.1],[-42.8,109.6],[-42.3,95.1],[-51.5,94.8]];
+            const AP_OFF6 = [[128.9,85.9],[103.2,106.1],[37.6,23.9],[63.3,3.7]];
+            const AP_OFF3 = [[22.6,129.5],[19.8,156.3],[52.9,159.8],[52.6,162.8],[61.9,163.7],[62.1,160.9],[86.5,163.2],[86.2,166.6],[95.5,167.4],[95.7,165.1],[120.0,167.3],[124.2,120.8],[82.0,117.0],[82.2,114.5],[69.2,113.3],[67.2,113.1],[67.1,114.5],[24.9,110.7]];
+            const AP_GAR = [[-232.6,121.4],[-230.8,105.5],[-221.5,106.4],[-216.4,107.1],[-160.8,115.1],[-158.5,115.4],[-156.4,115.7],[-156.1,113.8],[-150.3,114.6],[-149.2,114.8],[-148.6,110.3],[-143.9,111.0],[-115.5,115.1],[-113.9,115.3],[-117.3,138.3]];
+            const AP_X = [[23.8,16.9],[33.6,28.9],[32.1,30.1],[48.7,50.4],[53.5,56.2],[45.1,63.0],[47.4,65.7],[40.5,70.1],[24.6,51.5],[29.8,46.5],[21.5,36.3],[10.2,45.4],[9.2,44.2],[6.0,46.8],[3.4,46.7],[-6.0,35.0],[-5.7,33.3],[5.0,24.8],[8.8,29.1]];
+            const AP_SE = [[98.9,-9.9],[138.2,36.8],[152.7,24.8],[154.6,-0.7],[129.1,-30.9]];
             const apr = new THREE.Group();
-            const apPl = extrudeFoot(scalePoly(AP_HQ, 0.96), 4, 0x3a4348, 0.68, 0.35);
-            apr.add(apPl);                                                          // recessed dark plinth
-            const apGl = extrudeFoot(AP_HQ, 17, 0x8fa7b0, 0.78, 0.3);
-            apGl.position.y = 4; apr.add(apGl);                                     // glass body 4->21
-            [8.5, 13, 17.5].forEach(y => {
-              const band = extrudeFoot(scalePoly(AP_HQ, 1.005), 0.6, 0x6d838c, 0.7, 0.3);
-              band.position.y = y; apr.add(band);
+            const apOffice = (poly, hGlass) => {
+              const pl = extrudeFoot(scalePoly(poly, 0.96), 4, 0x3a4348, 0.68, 0.35);
+              apr.add(pl);
+              const gl = extrudeFoot(poly, hGlass, 0x8fa7b0, 0.78, 0.3);
+              gl.position.y = 4; apr.add(gl);
+              for (let y = 8.5; y < 3.5 + hGlass; y += 4.5) {
+                const band = extrudeFoot(scalePoly(poly, 1.005), 0.6, 0x6d838c, 0.7, 0.3);
+                band.position.y = y; apr.add(band);
+              }
+              const red = extrudeFoot(scalePoly(poly, 1.03), 0.5, 0xc22127, 0.85, 0.2);
+              red.position.y = 4 + hGlass; apr.add(red);
+              const fas = extrudeFoot(scalePoly(poly, 1.03), 1.6, 0xf0f2f3, 0.84, 0.26);
+              fas.position.y = 4.5 + hGlass; apr.add(fas);
+            };
+            apOffice(AP_HQ, 17);        // the headquarters bar
+            apOffice(AP_OFF6, 17);      // six-storey office (NE)
+            apOffice(AP_OFF3, 7.5);     // three-storey office block (N)
+            const apGarB = extrudeFoot(AP_GAR, 12, 0xcfd3d4, 0.74, 0.32);
+            apr.add(apGarB);            // parking garage…
+            [3.2, 6.2, 9.2].forEach(y => {                             // …with open deck lines
+              const deck = extrudeFoot(scalePoly(AP_GAR, 1.01), 0.7, 0x565d61, 0.6, 0.3);
+              deck.position.y = y; apr.add(deck);
             });
-            const apRed = extrudeFoot(scalePoly(AP_HQ, 1.03), 0.5, 0xc22127, 0.85, 0.2);
-            apRed.position.y = 21; apr.add(apRed);                                  // the red accent line…
-            const apFas = extrudeFoot(scalePoly(AP_HQ, 1.03), 1.6, 0xf0f2f3, 0.84, 0.26);
-            apFas.position.y = 21.5; apr.add(apFas);                                // …under the white roof plate
-            (function () {                                                          // production hall + courtyard
+            (function () {                                             // production hall + courtyard
               const sh = new THREE.Shape();
               AP_HALL.forEach((p, i) => i ? sh.lineTo(p[0], p[1]) : sh.moveTo(p[0], p[1]));
               sh.closePath();
@@ -1471,6 +1490,8 @@
               hg.rotateX(-Math.PI / 2);
               apr.add(facet(hg, 0xd8dbda, 0.76, 0.32));
             })();
+            apr.add(extrudeFoot(AP_X, 6.5, 0xd8dbda, 0.76, 0.32));     // cross-shaped lab hall
+            apr.add(extrudeFoot(AP_SE, 8, 0xd8dbda, 0.76, 0.32));      // south-east hall
             const mcAp = maplibregl.MercatorCoordinate.fromLngLat([15.404004, 47.031157], 0);
             apr.position.set((mcAp.x - T.x) / T.scale, 0, (mcAp.y - T.y) / T.scale);
             scene.add(apr);
@@ -1550,7 +1571,7 @@
               { name: 'TU Graz — Neue Technik', info: "Second main building of Graz University of Technology on Stremayrgasse (opened 1912) - home of the chemistry institutes. Together with the Alte Technik it frames the historic TU campus.",
                 lng: 15.4508763, lat: 47.0649005, polys: [{ p: NT_POLY, h: 19 }] },
               { name: 'Anton Paar', info: "Headquarters of Anton Paar, Graz's maker of precision measuring instruments - density meters, rheometers and lab analytics exported worldwide. Founded in 1922 as a one-man locksmith's workshop.",
-                lng: 15.404004,  lat: 47.031157,  polys: [{ p: AP_HQ, h: 23 }, { p: AP_HALL, h: 8 }] },
+                lng: 15.404004,  lat: 47.031157,  polys: [{ p: AP_HQ, h: 23 }, { p: AP_OFF6, h: 23 }, { p: AP_OFF3, h: 14 }, { p: AP_GAR, h: 12 }, { p: AP_HALL, h: 8 }, { p: AP_SE, h: 8 }] },
               { name: 'Uni Graz — Hauptgebäude', info: "Main building of the University of Graz on Universitaetsplatz (1895, historicist style). The university itself is Austria's second-oldest, founded in 1585.",
                 lng: 15.449878,  lat: 47.077747,  polys: [{ p: UNI_OUT, h: 17 }] }
             );
