@@ -1410,9 +1410,9 @@
             const uniRis = facet(new THREE.BoxGeometry(22, 19, 10), UNICREAM, 0.72, 0.42);
             uniRis.position.set(-42, 9.5, 10); uniRis.rotation.y = 0.51; uni.add(uniRis);  // risalit toward Universitätsplatz
             const uniDome = smoothG(new THREE.SphereGeometry(5, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), 0x5f6d6a, 0.55, 0.5);
-            uniDome.scale.y = 0.9; uniDome.position.set(-42, 19, -10); uni.add(uniDome);
+            uniDome.scale.y = 0.9; uniDome.position.set(-42, 19, 10); uni.add(uniDome);
             const uniFin = facet(new THREE.SphereGeometry(0.45, 8, 6), 0xcaa233, 1, 0.1);
-            uniFin.position.set(-42, 24.1, -10); uni.add(uniFin);
+            uniFin.position.set(-42, 24.1, 10); uni.add(uniFin);
             const mcUni = maplibregl.MercatorCoordinate.fromLngLat([15.449878, 47.077747], 0);
             uni.position.set((mcUni.x - T.x) / T.scale, 0, (mcUni.y - T.y) / T.scale);
             scene.add(uni);
