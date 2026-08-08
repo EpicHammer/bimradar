@@ -1456,10 +1456,10 @@
               const band = extrudeFoot(scalePoly(AP_HQ, 1.005), 0.6, 0x6d838c, 0.7, 0.3);
               band.position.y = y; apr.add(band);
             });
-            const apFas = extrudeFoot(scalePoly(AP_HQ, 1.03), 1.6, 0xf0f2f3, 0.84, 0.26);
-            apFas.position.y = 21; apr.add(apFas);                                  // white fascia
             const apRed = extrudeFoot(scalePoly(AP_HQ, 1.03), 0.5, 0xc22127, 0.85, 0.2);
-            apRed.position.y = 22.6; apr.add(apRed);                                // the red line
+            apRed.position.y = 21; apr.add(apRed);                                  // the red accent line…
+            const apFas = extrudeFoot(scalePoly(AP_HQ, 1.03), 1.6, 0xf0f2f3, 0.84, 0.26);
+            apFas.position.y = 21.5; apr.add(apFas);                                // …under the white roof plate
             (function () {                                                          // production hall + courtyard
               const sh = new THREE.Shape();
               AP_HALL.forEach((p, i) => i ? sh.lineTo(p[0], p[1]) : sh.moveTo(p[0], p[1]));
