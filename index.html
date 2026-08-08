@@ -625,7 +625,8 @@
       163983629, 29715115, 30168156, 984935018, 84579396, 85081251, // Grazer Burg member ways + Burgtor + Paulustor block
       82226336,                                                    // Stadthalle Graz
       29983017, 29983018,                                          // TU Alte Technik member ways
-      4399927, 8143951                                             // Uni Graz Hauptgebäude member ways
+      4399927, 8143951,                                            // Uni Graz Hauptgebäude member ways
+      75042781                                                     // TU Neue Technik
       // NB: CARTO renders the Burg relation itself as feature id 67773 — that id is
       // PROVABLY reused for unrelated buildings in other tiles, so it must NOT be
       // hidden; the model encloses that extrusion instead (same footprint, taller).
@@ -1411,6 +1412,33 @@
             tug.position.set((mcTu.x - T.x) / T.scale, 0, (mcTu.y - T.y) / T.scale);
             scene.add(tug);
 
+            // ---- TU Graz "Neue Technik" (Stremayrgasse, 1912) ----
+            // ~2.4 km SE, just south of the Alte Technik: the second historicist
+            // main building (chemistry campus). Same family look: cream walls,
+            // tile roof band, crowned central risalit + end pavilions on the
+            // Stremayrgasse (N) front. Building axis is rotated ~14 deg.
+            const NT_POLY = [[-57.3,-25.4],[-53.0,-9.0],[-52.0,-9.0],[-47.9,-10.2],[-41.9,9.6],[-38.4,21.5],[-40.2,22.2],[-35.4,38.8],[-34.7,41.3],[-27.8,39.8],[-9.2,34.9],[-9.5,33.9],[14.4,28.0],[26.2,25.0],[26.3,25.7],[44.2,21.1],[50.4,19.8],[47.5,10.2],[45.0,1.6],[44.7,0.7],[42.6,1.3],[41.5,-2.5],[41.0,-4.2],[32.1,-33.6],[37.8,-35.6],[32.8,-50.8],[30.6,-50.3],[11.8,-45.0],[13.5,-39.4],[17.2,-27.4],[17.6,-26.0],[19.0,-20.6],[22.5,-21.6],[28.1,-1.6],[21.9,0.2],[22.6,2.7],[23.5,6.1],[21.9,6.6],[20.2,7.0],[21.5,11.6],[10.0,14.7],[-13.9,21.4],[-15.4,15.8],[-18.3,16.6],[-19.0,13.9],[-19.9,10.9],[-27.6,13.0],[-29.5,6.1],[-33.5,-7.8],[-34.1,-10.1],[-34.7,-12.8],[-37.9,-23.7],[-39.8,-30.2]];
+            const ntg = new THREE.Group();
+            ntg.add(extrudeFoot(NT_POLY, 16, 0xe3d9c0, 0.72, 0.42));
+            const ntRoof = extrudeFoot(NT_POLY, 3, 0x9a5a44, 0.58, 0.45);
+            ntRoof.position.y = 16; ntg.add(ntRoof);
+            const NT_ROT = Math.atan2(61, 16);                       // N-front direction
+            const ntRis = facet(new THREE.BoxGeometry(16, 22, 9), 0xe3d9c0, 0.72, 0.42);
+            ntRis.position.set(-4, 11, -33); ntRis.rotation.y = NT_ROT; ntg.add(ntRis);
+            const ntMans = facet(new THREE.ConeGeometry(7, 4.5, 4), 0x5a6066, 0.58, 0.5);
+            ntMans.rotation.y = Math.PI / 4 + NT_ROT; ntMans.position.set(-4, 24.2, -33); ntg.add(ntMans);
+            const ntFin = facet(new THREE.SphereGeometry(0.5, 8, 6), 0xcaa233, 1, 0.1);
+            ntFin.position.set(-4, 26.8, -33); ntg.add(ntFin);
+            [[-33, 39], [43, 20]].forEach(([E, N]) => {              // end pavilions
+              const pav = facet(new THREE.BoxGeometry(10, 19, 10), 0xe3d9c0, 0.72, 0.42);
+              pav.position.set(E, 9.5, -N); pav.rotation.y = NT_ROT; ntg.add(pav);
+              const cap = facet(new THREE.ConeGeometry(7.2, 3.8, 4), 0x5a6066, 0.58, 0.5);
+              cap.rotation.y = Math.PI / 4 + NT_ROT; cap.position.set(E, 20.9, -N); ntg.add(cap);
+            });
+            const mcNt = maplibregl.MercatorCoordinate.fromLngLat([15.4508763, 47.0649005], 0);
+            ntg.position.set((mcNt.x - T.x) / T.scale, 0, (mcNt.y - T.y) / T.scale);
+            scene.add(ntg);
+
             // ---- Uni Graz Hauptgebäude (Universitätsplatz, 1895) ----
             // ~2.9 km NE. Ring­straßen-style main building around a big courtyard,
             // with a raised risalit + slate cupola on the SW (plaza) facade.
@@ -1483,6 +1511,8 @@
                 lng: 15.44752,   lat: 47.057682,  polys: [{ p: MSH_POLY, h: 25.5 }] },
               { name: 'TU Graz — Alte Technik', info: 'Main building of Graz University of Technology on Rechbauerstrasse (opened 1888, historicist style) - the heart of the oldest TU campus.',
                 lng: 15.450314,  lat: 47.069085,  polys: [{ p: TU_OUT, h: 18 }] },
+              { name: 'TU Graz — Neue Technik', info: "Second main building of Graz University of Technology on Stremayrgasse (opened 1912) - home of the chemistry institutes. Together with the Alte Technik it frames the historic TU campus.",
+                lng: 15.4508763, lat: 47.0649005, polys: [{ p: NT_POLY, h: 19 }] },
               { name: 'Uni Graz — Hauptgebäude', info: "Main building of the University of Graz on Universitaetsplatz (1895, historicist style). The university itself is Austria's second-oldest, founded in 1585.",
                 lng: 15.449878,  lat: 47.077747,  polys: [{ p: UNI_OUT, h: 17 }] }
             );
