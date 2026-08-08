@@ -622,10 +622,15 @@
       29714926,                                                    // Opernhaus
       29714804,                                                    // Stadtpfarrkirche
       29714669,                                                    // Leechkirche
-      163983629, 29715115, 30168156, 984935018, 84579396, 85081251 // Grazer Burg member ways + Burgtor + Paulustor block
+      163983629, 29715115, 30168156, 984935018, 84579396, 85081251, // Grazer Burg member ways + Burgtor + Paulustor block
+      82226336,                                                    // Stadthalle Graz
+      29983017, 29983018,                                          // TU Alte Technik member ways
+      4399927, 8143951                                             // Uni Graz Hauptgebäude member ways
       // NB: CARTO renders the Burg relation itself as feature id 67773 — that id is
       // PROVABLY reused for unrelated buildings in other tiles, so it must NOT be
       // hidden; the model encloses that extrusion instead (same footprint, taller).
+      // Same rule for the TU (rel 67291) and Uni Hauptgebäude (rel 476): tiny
+      // relation ids, never hidden — their models enclose the CARTO extrusions.
     ];
     const HIDE_TOWER = ['all',
       ['!=', ['get', 'hide_3d'], true],
@@ -1332,6 +1337,86 @@
             plt.position.set((mcPt.x - T.x) / T.scale, 0, (mcPt.y - T.y) / T.scale);
             scene.add(plt);
 
+            // ---- Stadthalle Graz (Messe) — Klaus Kada's glass hall, 2002 ----
+            // ~2.9 km S. One huge translucent box with a thin floating roof slab.
+            const MSH_POLY = [[37.4,52.8],[-0.4,39.3],[-64.0,14.5],[-63.1,12.0],[-52.7,-16.5],[-39.9,-50.5],[-39.2,-52.8],[21.7,-31.3],[64.0,-15.3],[63.1,-13.4],[38.1,51.4]];
+            const msh = new THREE.Group();
+            msh.add(extrudeFoot(MSH_POLY, 23, 0xaebfc6, 0.76, 0.34));   // glassy pale walls
+            const mshRoof = extrudeFoot(MSH_POLY, 2.5, 0xe8ebec, 0.8, 0.3);
+            mshRoof.position.y = 23; msh.add(mshRoof);                  // light floating roof slab
+            const mcMsh = maplibregl.MercatorCoordinate.fromLngLat([15.44752, 47.057682], 0);
+            msh.position.set((mcMsh.x - T.x) / T.scale, 0, (mcMsh.y - T.y) / T.scale);
+            scene.add(msh);
+
+            // ---- TU Graz "Alte Technik" (Rechbauerstraße, 1888) ----
+            // ~1.9 km SE. Historicist main building around a courtyard (real
+            // multipolygon hole) with a raised central risalit on the N front.
+            const TU_OUT = [[-36.0,-30.4],[-43.1,-28.2],[-44.1,-27.9],[-41.4,-19.3],[-40.5,-19.6],[-33.7,2.3],[-34.4,2.6],[-30.4,15.8],[-29.7,15.6],[-24.0,34.0],[-23.6,35.5],[-23.0,37.4],[-23.8,37.7],[-20.6,48.0],[-9.9,44.7],[-10.3,43.6],[-6.5,42.4],[1.7,40.0],[3.0,44.2],[9.1,42.4],[15.1,40.6],[22.5,38.4],[21.2,34.1],[29.3,31.6],[34.8,30.0],[34.9,30.4],[42.0,28.3],[44.2,27.6],[41.3,18.3],[40.0,18.6],[38.9,15.0],[33.4,-3.2],[34.3,-3.4],[33.1,-7.3],[30.3,-16.7],[29.3,-16.4],[22.7,-37.9],[23.7,-38.3],[20.8,-47.8],[19.8,-47.5],[12.5,-45.3],[11.7,-48.0],[-12.6,-40.7],[-36.9,-33.3]];
+            const TU_HOLE = [[-20.0,-1.7],[-2.7,-6.9],[-0.8,-7.4],[-7.1,-28.0],[-8.8,-27.5],[-26.3,-22.2],[-22.9,-11.2]];
+            const tug = new THREE.Group();
+            const TUCREAM = 0xe6d9b8, TUTILE = 0x9a5a44;
+            (function () {
+              const s = new THREE.Shape();
+              TU_OUT.forEach((p, i) => i ? s.lineTo(p[0], p[1]) : s.moveTo(p[0], p[1]));
+              s.closePath();
+              const h = new THREE.Path();
+              TU_HOLE.forEach((p, i) => i ? h.lineTo(p[0], p[1]) : h.moveTo(p[0], p[1]));
+              h.closePath(); s.holes.push(h);
+              const bodyG = new THREE.ExtrudeGeometry(s, { depth: 15, bevelEnabled: false });
+              bodyG.rotateX(-Math.PI / 2); tug.add(facet(bodyG, TUCREAM, 0.72, 0.42));
+              const s2 = new THREE.Shape();
+              TU_OUT.forEach((p, i) => i ? s2.lineTo(p[0], p[1]) : s2.moveTo(p[0], p[1]));
+              s2.closePath();
+              const h2 = new THREE.Path();
+              TU_HOLE.forEach((p, i) => i ? h2.lineTo(p[0], p[1]) : h2.moveTo(p[0], p[1]));
+              h2.closePath(); s2.holes.push(h2);
+              const roofG = new THREE.ExtrudeGeometry(s2, { depth: 3, bevelEnabled: false });
+              roofG.rotateX(-Math.PI / 2);
+              const roofM = facet(roofG, TUTILE, 0.58, 0.45);
+              roofM.position.y = 15; tug.add(roofM);
+            })();
+            const tuRis = facet(new THREE.BoxGeometry(18, 21, 9), TUCREAM, 0.72, 0.42);
+            tuRis.position.set(-9, 10.5, -42); tuRis.rotation.y = -0.31; tug.add(tuRis);   // central risalit, Rechbauer front
+            const tuCap = facet(new THREE.BoxGeometry(19, 1.8, 10), 0x777d82, 0.6, 0.45);
+            tuCap.position.set(-9, 21.9, -42); tuCap.rotation.y = -0.31; tug.add(tuCap);
+            const mcTu = maplibregl.MercatorCoordinate.fromLngLat([15.450314, 47.069085], 0);
+            tug.position.set((mcTu.x - T.x) / T.scale, 0, (mcTu.y - T.y) / T.scale);
+            scene.add(tug);
+
+            // ---- Uni Graz Hauptgebäude (Universitätsplatz, 1895) ----
+            // ~2.9 km NE. Ring­straßen-style main building around a big courtyard,
+            // with a raised risalit + slate cupola on the SW (plaza) facade.
+            const UNI_OUT = [[56.0,-18.2],[54.7,-16.3],[50.3,-9.6],[48.7,-7.3],[48.1,-7.7],[39.0,6.0],[15.6,41.1],[12.7,45.5],[13.5,46.1],[11.7,48.9],[5.8,57.7],[-6.0,49.9],[-5.8,49.5],[-19.9,40.2],[-21.4,39.2],[-22.7,38.4],[-37.0,29.0],[-37.6,30.0],[-40.1,28.4],[-44.9,25.3],[-43.4,23.0],[-56.0,14.7],[-39.7,-9.8],[-43.3,-12.2],[-38.8,-19.0],[-35.7,-23.7],[-32.8,-28.1],[-27.9,-35.5],[-24.3,-33.1],[-7.9,-57.7],[5.0,-49.3],[6.4,-51.4],[14.0,-46.4],[13.3,-45.4],[44.2,-25.1],[44.6,-25.7]];
+            const UNI_HOLE = [[5.7,-34.3],[-4.9,-18.4],[-11.7,-8.0],[-18.5,2.2],[-29.1,18.1],[-14.1,27.9],[1.9,38.4],[36.7,-14.0]];
+            const uni = new THREE.Group();
+            const UNICREAM = 0xe9e0c8, UNITILE = 0x8a6a52;
+            (function () {
+              const mk = () => {
+                const s = new THREE.Shape();
+                UNI_OUT.forEach((p, i) => i ? s.lineTo(p[0], p[1]) : s.moveTo(p[0], p[1]));
+                s.closePath();
+                const h = new THREE.Path();
+                UNI_HOLE.forEach((p, i) => i ? h.lineTo(p[0], p[1]) : h.moveTo(p[0], p[1]));
+                h.closePath(); s.holes.push(h);
+                return s;
+              };
+              const bodyG = new THREE.ExtrudeGeometry(mk(), { depth: 14, bevelEnabled: false });
+              bodyG.rotateX(-Math.PI / 2); uni.add(facet(bodyG, UNICREAM, 0.72, 0.42));
+              const roofG = new THREE.ExtrudeGeometry(mk(), { depth: 3, bevelEnabled: false });
+              roofG.rotateX(-Math.PI / 2);
+              const roofM = facet(roofG, UNITILE, 0.58, 0.45);
+              roofM.position.y = 14; uni.add(roofM);
+            })();
+            const uniRis = facet(new THREE.BoxGeometry(22, 19, 10), UNICREAM, 0.72, 0.42);
+            uniRis.position.set(-42, 9.5, 10); uniRis.rotation.y = 0.51; uni.add(uniRis);  // risalit toward Universitätsplatz
+            const uniDome = smoothG(new THREE.SphereGeometry(5, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), 0x5f6d6a, 0.55, 0.5);
+            uniDome.scale.y = 0.9; uniDome.position.set(-42, 19, -10); uni.add(uniDome);
+            const uniFin = facet(new THREE.SphereGeometry(0.45, 8, 6), 0xcaa233, 1, 0.1);
+            uniFin.position.set(-42, 24.1, -10); uni.add(uniFin);
+            const mcUni = maplibregl.MercatorCoordinate.fromLngLat([15.449878, 47.077747], 0);
+            uni.position.set((mcUni.x - T.x) / T.scale, 0, (mcUni.y - T.y) / T.scale);
+            scene.add(uni);
+
             // Occluder registry for the vehicle occlusion pass (see updateOcclusion):
             // each landmark's footprint polys (local metres E,N) + heights. Guarded —
             // onAdd re-runs after every theme switch and must not duplicate.
@@ -1365,7 +1450,13 @@
               { name: 'Grazer Burg', info: 'Residenz Kaiser Friedrichs III. (ab 1438), heute Sitz der Landesregierung. Berühmt für die gotische Doppelwendeltreppe (1499). Mit Burgtor zum Stadtpark.',
                 lng: 15.44233,   lat: 47.072855,  polys: [{ p: BG_OUTER, h: 17 }, { p: BG_W, h: 15.5 }, { p: BT_POLY, h: 11 }] },
               { name: 'Paulustor', info: 'Renaissance-Stadttor der äußeren Befestigung (um 1620) am Fuß des Schloßbergs.',
-                lng: 15.440834,  lat: 47.075953,  polys: [{ p: PT_BLOCK, h: 14 }] }
+                lng: 15.440834,  lat: 47.075953,  polys: [{ p: PT_BLOCK, h: 14 }] },
+              { name: 'Stadthalle Graz', info: 'Multifunktionshalle der Messe Graz von Klaus Kada (2002) — gläserne Großhalle für Messen, Konzerte und Sport, bis zu ~14.000 Gäste.',
+                lng: 15.44752,   lat: 47.057682,  polys: [{ p: MSH_POLY, h: 25.5 }] },
+              { name: 'TU Graz — Alte Technik', info: 'Hauptgebäude der Technischen Universität an der Rechbauerstraße (eröffnet 1888, Historismus). Herzstück des ältesten TU-Campus.',
+                lng: 15.450314,  lat: 47.069085,  polys: [{ p: TU_OUT, h: 18 }] },
+              { name: 'Uni Graz — Hauptgebäude', info: 'Hauptgebäude der Karl-Franzens-Universität am Universitätsplatz (1895, Historismus). Die Uni selbst ist Österreichs zweitälteste (gegründet 1585).',
+                lng: 15.449878,  lat: 47.077747,  polys: [{ p: UNI_OUT, h: 17 }] }
             );
 
             renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
