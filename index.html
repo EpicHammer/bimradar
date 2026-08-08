@@ -1338,12 +1338,28 @@
             scene.add(plt);
 
             // ---- Stadthalle Graz (Messe) — Klaus Kada's glass hall, 2002 ----
-            // ~2.9 km S. One huge translucent box with a thin floating roof slab.
+            // ~2.9 km S. Kada's signature: a glass volume UNDER an oversailing
+            // white roof plate that floats past the facade on slender columns.
             const MSH_POLY = [[37.4,52.8],[-0.4,39.3],[-64.0,14.5],[-63.1,12.0],[-52.7,-16.5],[-39.9,-50.5],[-39.2,-52.8],[21.7,-31.3],[64.0,-15.3],[63.1,-13.4],[38.1,51.4]];
+            const scalePoly = (poly, f) => {
+              let cx = 0, cy = 0; poly.forEach(p => { cx += p[0]; cy += p[1]; });
+              cx /= poly.length; cy /= poly.length;
+              return poly.map(p => [cx + (p[0] - cx) * f, cy + (p[1] - cy) * f]);
+            };
             const msh = new THREE.Group();
-            msh.add(extrudeFoot(MSH_POLY, 23, 0xaebfc6, 0.76, 0.34));   // glassy pale walls
-            const mshRoof = extrudeFoot(MSH_POLY, 2.5, 0xe8ebec, 0.8, 0.3);
-            mshRoof.position.y = 23; msh.add(mshRoof);                  // light floating roof slab
+            msh.add(extrudeFoot(scalePoly(MSH_POLY, 0.93), 21, 0x9db8c6, 0.8, 0.3));      // glass volume, inset
+            [5.5, 11, 16.5].forEach(y => {                                               // curtain-wall mullion bands
+              const band = extrudeFoot(scalePoly(MSH_POLY, 0.935), 0.6, 0x7b93a1, 0.7, 0.3);
+              band.position.y = y; msh.add(band);
+            });
+            const mshRoof = extrudeFoot(scalePoly(MSH_POLY, 1.07), 2, 0xf0f2f3, 0.84, 0.26);
+            mshRoof.position.y = 21.5; msh.add(mshRoof);                                 // oversailing white roof plate
+            const mshFasc = extrudeFoot(scalePoly(MSH_POLY, 1.07), 0.5, 0xc7ced2, 0.7, 0.3);
+            mshFasc.position.y = 21; msh.add(mshFasc);                                   // shadow gap under the plate
+            for (const p of MSH_POLY) {                                                  // slender perimeter columns
+              const col = facet(new THREE.CylinderGeometry(0.55, 0.55, 21, 8), 0xe9edef, 0.78, 0.3);
+              col.position.set(p[0], 10.5, -p[1]); msh.add(col);
+            }
             const mcMsh = maplibregl.MercatorCoordinate.fromLngLat([15.44752, 47.057682], 0);
             msh.position.set((mcMsh.x - T.x) / T.scale, 0, (mcMsh.y - T.y) / T.scale);
             scene.add(msh);
@@ -1379,6 +1395,18 @@
             tuRis.position.set(-9, 10.5, -42); tuRis.rotation.y = -0.31; tug.add(tuRis);   // central risalit, Rechbauer front
             const tuCap = facet(new THREE.BoxGeometry(19, 1.8, 10), 0x777d82, 0.6, 0.45);
             tuCap.position.set(-9, 21.9, -42); tuCap.rotation.y = -0.31; tug.add(tuCap);
+            // crowned centre: shallow slate mansard + gilt finial over the risalit
+            const tuMans = facet(new THREE.ConeGeometry(7.5, 4.5, 4), 0x5a6066, 0.58, 0.5);
+            tuMans.rotation.y = Math.PI / 4 - 0.31; tuMans.position.set(-9, 25, -42); tug.add(tuMans);
+            const tuFin = facet(new THREE.SphereGeometry(0.5, 8, 6), 0xcaa233, 1, 0.1);
+            tuFin.position.set(-9, 27.6, -42); tug.add(tuFin);
+            // four corner pavilions with slate pyramid caps (historicist rhythm)
+            [[-38, -24], [-17.7, 41.3], [38, 23.7], [17.9, -41.1]].forEach(([E, N]) => {
+              const pav = facet(new THREE.BoxGeometry(11, 18, 11), TUCREAM, 0.72, 0.42);
+              pav.position.set(E, 9, -N); pav.rotation.y = -0.31; tug.add(pav);
+              const cap = facet(new THREE.ConeGeometry(8, 4, 4), 0x5a6066, 0.58, 0.5);
+              cap.rotation.y = Math.PI / 4 - 0.31; cap.position.set(E, 20, -N); tug.add(cap);
+            });
             const mcTu = maplibregl.MercatorCoordinate.fromLngLat([15.450314, 47.069085], 0);
             tug.position.set((mcTu.x - T.x) / T.scale, 0, (mcTu.y - T.y) / T.scale);
             scene.add(tug);
@@ -1421,41 +1449,41 @@
             // each landmark's footprint polys (local metres E,N) + heights. Guarded —
             // onAdd re-runs after every theme switch and must not duplicate.
             if (!LMK_OCC.length) LMK_OCC.push(
-              { name: 'Uhrturm', info: 'Das Wahrzeichen von Graz (28 m, 13. Jh.). Die Uhr von 1712 hat "vertauschte" Zeiger: der große zeigt die Stunden. 1809 kauften die Grazer den Turm für 2.987 Gulden vom Abriss frei.',
+              { name: 'Uhrturm', info: "Graz's landmark (28 m, 13th century). The 1712 clock has 'swapped' hands - the big one shows the hours. In 1809 the citizens paid Napoleon's troops 2,987 guilders to spare it from demolition.",
                 lng: 15.4377297, lat: 47.0735395, polys: [{ p: [[-5,-5],[5,-5],[5,5],[-5,5]], h: 32 }] },
-              { name: 'Glockenturm "Liesl"', info: 'Achteckiger Glockenturm am Schloßberg (1588, 34 m). Seine Glocke "Liesl" (4,6 t) ist die drittgrößte der Steiermark.',
+              { name: 'Glockenturm "Liesl"', info: "Octagonal bell tower on the Schlossberg (1588, 34 m). Its bell 'Liesl' (4.6 t) is the third-largest in Styria.",
                 lng: 15.4371872, lat: 47.0759736, polys: [{ p: [[-6,-6],[6,-6],[6,6],[-6,6]], h: 34 }] },
-              { name: 'Murinsel', info: 'Schwimmende Stahlinsel von Vito Acconci, gebaut zum Kulturhauptstadtjahr 2003. Café unter der Glaskuppel, Amphitheater, zwei Stege zu den Ufern.',
+              { name: 'Murinsel', info: "Floating steel island by Vito Acconci, built for Graz's year as European Capital of Culture 2003. Cafe under the glass dome, an amphitheatre, and footbridges to both banks.",
                 lng: 15.434596,  lat: 47.073166,  polys: [{ p: MUR_FOOT, h: 12 }] },
-              { name: 'Herz-Jesu-Kirche', info: 'Neugotik von Georg Hauberrisser (1881–1887). Mit 109,6 m der höchste Kirchturm der Steiermark und der dritthöchste Österreichs.',
+              { name: 'Herz-Jesu-Kirche', info: 'Neo-Gothic by Georg Hauberrisser (1881-1887). At 109.6 m the tallest church tower in Styria and the third-tallest in Austria.',
                 lng: 15.455777,  lat: 47.069640,  polys: HJ_PARTS.map(pt => ({ p: pt.p, h: pt.h })) },
-              { name: 'Kunsthaus "Friendly Alien"', info: 'Museum für Gegenwartskunst von Peter Cook & Colin Fournier (2003), mit BIX-Medienfassade. Daneben das Eiserne Haus (1848), der älteste Gusseisenbau Kontinentaleuropas.',
+              { name: 'Kunsthaus "Friendly Alien"', info: "Museum of contemporary art by Peter Cook & Colin Fournier (2003), with the BIX media facade. Next door: the Eisernes Haus (1848), continental Europe's oldest cast-iron building.",
                 lng: 15.434015,  lat: 47.0712985, polys: [{ p: BLOB, h: 22 }, { p: EISEN, h: 10 }] },
-              { name: 'Mausoleum', info: 'Grabmal Kaiser Ferdinands II. mit Katharinenkirche (ab 1614, Pietro de Pomis) — Manierismus, Teil der Grazer Stadtkrone.',
+              { name: 'Mausoleum', info: "Tomb of Emperor Ferdinand II with St Catherine's Church (from 1614, Pietro de Pomis) - Mannerism, part of the Graz 'city crown'.",
                 lng: 15.4426221, lat: 47.0716735, polys: [{ p: MZ_BODY, h: 18 }, { p: [[10,3],[19,3],[19,12],[10,12]], h: 34 }] },
-              { name: 'Rathaus', info: 'Grazer Rathaus am Hauptplatz (1887–1893, Historismus). Sitz von Bürgermeister und Gemeinderat.',
+              { name: 'Rathaus', info: 'Graz City Hall on Hauptplatz (1887-1893, historicist style). Seat of the mayor and the city council.',
                 lng: 15.4386227, lat: 47.0704186, polys: [{ p: RH_POLY, h: 19.6 }, { p: [[-3,36],[7,36],[7,46],[-3,46]], h: 52 }] },
-              { name: 'Mariahilferkirche', info: 'Wallfahrtskirche der Minoriten im Lend. Fassade von Pietro de Pomis (1607–1611), die Doppeltürme kamen 1742–44 dazu.',
+              { name: 'Mariahilferkirche', info: 'Pilgrimage church of the Minorite friars in Lend. Facade by Pietro de Pomis (1607-1611); the twin towers were added 1742-44.',
                 lng: 15.4330619, lat: 47.0728242, polys: [{ p: MH_POLY, h: 19 }, { p: [[12,1],[18,1],[18,8],[12,8]], h: 39 }, { p: [[15,-11],[21,-11],[21,-4],[15,-4]], h: 39 }] },
-              { name: 'Grazer Dom', info: 'Dom St. Ägidius (ab 1438 unter Kaiser Friedrich III., Spätgotik) mit barockem Turmhelm. Bischofskirche und Teil der Stadtkrone.',
+              { name: 'Grazer Dom', info: "St Giles' Cathedral (from 1438 under Emperor Frederick III, late Gothic) with a Baroque spire. The bishop's church, part of the city crown.",
                 lng: 15.4423443, lat: 47.0720132, polys: [{ p: DOM_POLY, h: 22 }, { p: [[-29,0],[-21,0],[-21,10],[-29,10]], h: 48 }] },
-              { name: 'Franziskanerkirche', info: 'Kloster seit 1239 — einer der ältesten Bauten der Stadt am Murufer. Der markante Turm stammt von 1636.',
+              { name: 'Franziskanerkirche', info: 'Friary founded in 1239 - one of the oldest buildings in the city, right by the Mur. The landmark tower dates from 1636.',
                 lng: 15.4365415, lat: 47.0706718, polys: [{ p: FR_POLY, h: 18 }, { p: [[17,-6],[25,-6],[25,2],[17,2]], h: 46 }] },
-              { name: 'Opernhaus', info: 'Neobarock von Fellner & Helmer (1899), gebaut in nur zwei Jahren. Mit ~1.200 Plätzen das zweitgrößte Opernhaus Österreichs.',
+              { name: 'Opernhaus', info: "Neo-Baroque opera house by Fellner & Helmer (1899), built in just two years. With ~1,200 seats Austria's second-largest opera house.",
                 lng: 15.4455959, lat: 47.0690169, polys: [{ p: OP_POLY, h: 17.5 }, { p: [[10,-32],[40,-32],[40,-6],[10,-6]], h: 29 }] },
-              { name: 'Stadtpfarrkirche', info: 'Stadtpfarrkirche zum Heiligen Blut an der Herrengasse (15. Jh.), 56-m-Turm mit barocker Doppelzwiebel-Haube.',
+              { name: 'Stadtpfarrkirche', info: 'City parish church of the Holy Blood on Herrengasse (15th century); 56 m tower with a Baroque double-onion cap.',
                 lng: 15.4412014, lat: 47.0694177, polys: [{ p: SP_POLY, h: 19 }, { p: [[-26,-13],[-16,-13],[-16,-3],[-26,-3]], h: 50 }] },
-              { name: 'Leechkirche', info: 'Geweiht 1293 — das älteste erhaltene Bauwerk von Graz. Frühgotische Kirche des Deutschen Ordens am Uni-Campus.',
+              { name: 'Leechkirche', info: 'Consecrated in 1293 - the oldest surviving building in Graz. Early-Gothic church of the Teutonic Order, on the university campus.',
                 lng: 15.4467468, lat: 47.0755519, polys: [{ p: LK_POLY, h: 19 }, { p: [[-14,-2],[-9,-2],[-9,4],[-14,4]], h: 33 }] },
-              { name: 'Grazer Burg', info: 'Residenz Kaiser Friedrichs III. (ab 1438), heute Sitz der Landesregierung. Berühmt für die gotische Doppelwendeltreppe (1499). Mit Burgtor zum Stadtpark.',
+              { name: 'Grazer Burg', info: 'Residence of Emperor Frederick III (from 1438), today the seat of the Styrian state government. Famous for its Gothic double-spiral staircase (1499). With the Burgtor gate to the Stadtpark.',
                 lng: 15.44233,   lat: 47.072855,  polys: [{ p: BG_OUTER, h: 17 }, { p: BG_W, h: 15.5 }, { p: BT_POLY, h: 11 }] },
-              { name: 'Paulustor', info: 'Renaissance-Stadttor der äußeren Befestigung (um 1620) am Fuß des Schloßbergs.',
+              { name: 'Paulustor', info: 'Renaissance city gate of the outer fortifications (c. 1620) at the foot of the Schlossberg.',
                 lng: 15.440834,  lat: 47.075953,  polys: [{ p: PT_BLOCK, h: 14 }] },
-              { name: 'Stadthalle Graz', info: 'Multifunktionshalle der Messe Graz von Klaus Kada (2002) — gläserne Großhalle für Messen, Konzerte und Sport, bis zu ~14.000 Gäste.',
+              { name: 'Stadthalle Graz', info: 'Multi-purpose hall of the Graz trade fair by Klaus Kada (2002) - a vast glass hall for fairs, concerts and sport, holding up to ~14,000 guests.',
                 lng: 15.44752,   lat: 47.057682,  polys: [{ p: MSH_POLY, h: 25.5 }] },
-              { name: 'TU Graz — Alte Technik', info: 'Hauptgebäude der Technischen Universität an der Rechbauerstraße (eröffnet 1888, Historismus). Herzstück des ältesten TU-Campus.',
+              { name: 'TU Graz — Alte Technik', info: 'Main building of Graz University of Technology on Rechbauerstrasse (opened 1888, historicist style) - the heart of the oldest TU campus.',
                 lng: 15.450314,  lat: 47.069085,  polys: [{ p: TU_OUT, h: 18 }] },
-              { name: 'Uni Graz — Hauptgebäude', info: 'Hauptgebäude der Karl-Franzens-Universität am Universitätsplatz (1895, Historismus). Die Uni selbst ist Österreichs zweitälteste (gegründet 1585).',
+              { name: 'Uni Graz — Hauptgebäude', info: "Main building of the University of Graz on Universitaetsplatz (1895, historicist style). The university itself is Austria's second-oldest, founded in 1585.",
                 lng: 15.449878,  lat: 47.077747,  polys: [{ p: UNI_OUT, h: 17 }] }
             );
 
