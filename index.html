@@ -2835,16 +2835,11 @@
         c.className = 'canon'; c.textContent = canon.n;
         box.appendChild(c);
       }
-      // this particular run: where it actually started and ends today
-      if (v.origin && v.dest) {
-        const rt = document.createElement('div');
-        rt.className = 'route';
-        rt.textContent = (canon ? 'Diese Fahrt: ' : '') + v.origin + ' → ' + v.dest;
-        box.appendChild(rt);
-      }
-      if (v.dir && v.dir !== v.dest) {
+      // where it's headed — one line, no itinerary recap
+      const dirTxt = v.dir || v.dest;
+      if (dirTxt) {
         const d = document.createElement('div');
-        d.className = 'dirn'; d.textContent = 'Richtung ' + v.dir;
+        d.className = 'dirn'; d.textContent = 'Richtung ' + dirTxt;
         box.appendChild(d);
       }
       if (v.nextStop) {
