@@ -2919,6 +2919,21 @@
     // =====================================================================
     const trip = { from: null, to: null, opts: [], sel: -1 };
     const mkEl = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; };
+    const suggState = { from: [], to: [] };   // latest suggestion lists, for Enter-to-pick
+    function pickSuggestion(which, item) {
+      // stops carry a HAFAS id (exact routing); places go in as coordinates
+      trip[which] = item.lid
+        ? { lid: item.lid, name: item.name }
+        : { crd: { x: Math.round(item.lon * 1e6), y: Math.round(item.lat * 1e6) }, name: item.name };
+      $(which).value = item.name;
+      $('sugg-' + which).hidden = true;
+      if (map) {
+        dropPin(which, { lat: item.lat, lng: item.lon }, item.name);
+        // typing an address means "show me this place" — jump there
+        map.flyTo({ center: [item.lon, item.lat], zoom: Math.max(map.getZoom(), 15.5), duration: 900 });
+      }
+      updateClearBtn();
+    }
     let tripLine = null;
     let armed = null;              // 'from' | 'to' — the field a map tap will fill
     const pins = { from: null, to: null };
@@ -3048,6 +3063,7 @@
         // stops get a 1.5 km head start: for a stop-name query the stop should lead
         .sort((x, y) => (x.d - (x.isStop ? 1.5 : 0)) - (y.d - (y.isStop ? 1.5 : 0)))
         .slice(0, 9);
+      suggState[which] = near;
 
       box.replaceChildren();
       if (!near.length) {
@@ -3076,17 +3092,7 @@
           far.textContent = Math.round(item.d) + ' km';
           row.appendChild(far);
         }
-        row.addEventListener('mousedown', e => {
-          e.preventDefault();
-          // stops carry a HAFAS id (exact routing); places go in as coordinates
-          trip[which] = item.lid
-            ? { lid: item.lid, name: item.name }
-            : { crd: { x: Math.round(item.lon * 1e6), y: Math.round(item.lat * 1e6) }, name: item.name };
-          $(which).value = item.name;
-          box.hidden = true;
-          if (map) dropPin(which, { lat: item.lat, lng: item.lon }, item.name);
-          updateClearBtn();
-        });
+        row.addEventListener('mousedown', e => { e.preventDefault(); pickSuggestion(which, item); });
         box.appendChild(row);
       }
       box.hidden = false;
@@ -3175,7 +3181,14 @@
     }
     $('clear').addEventListener('click', e => { e.preventDefault(); clearSearch(); });
     $('go').addEventListener('click', planTrip);
-    $('to').addEventListener('keydown', e => { if (e.key === 'Enter') planTrip(); });
+    for (const w of ['from', 'to']) {
+      $(w).addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        const list = suggState[w] || [];
+        if (!$('sugg-' + w).hidden && list.length) { e.preventDefault(); pickSuggestion(w, list[0]); return; }
+        if (w === 'to') planTrip();
+      });
+    }
 
     function renderTrips() {
       const box = $('results');
