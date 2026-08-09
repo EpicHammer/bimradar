@@ -108,13 +108,14 @@
     /* installed as an app: the home-screen icon already carries the name —
        inside, the header shrinks to a slim control row */
     @media all and (display-mode: standalone) {
-      header h1 { display: none; }
-      header { justify-content: flex-end; margin-bottom: .35rem; }
+      header { display: none; }
     }
     h1 { font-size: 1.3rem; margin: 0; font-weight: 700; letter-spacing: -0.02em; }
     h1 .brandrow { display: flex; align-items: center; gap: .5rem; }
     .brandmark { flex: none; width: 21px; height: 21px; color: var(--fg); }
-    .hright { display: flex; gap: .4rem; }
+    .hright { display: flex; gap: .4rem; margin-left: auto; }
+    .chiprow .tbtn { width: 30px; height: 30px; }
+    .chiprow .tbtn svg { width: 15px; height: 15px; }
     .tbtn { width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--line);
       background: color-mix(in srgb, var(--card) 72%, transparent);
       backdrop-filter: blur(12px) saturate(1.5); -webkit-backdrop-filter: blur(12px) saturate(1.5);
@@ -145,7 +146,7 @@
     .chiprow { display: flex; align-items: center; gap: .3rem; margin: .1rem 0 .8rem; flex-wrap: wrap; }
     @media (max-width: 420px) {
       .vchip { font-size: .72rem; padding: .18rem .42rem .18rem .3rem; }
-      .chips { gap: .3rem; }
+      .chiprow { gap: .25rem; }
     }
     .vchip {
       display: inline-flex; align-items: center; gap: .3rem;
@@ -352,6 +353,17 @@
             <circle cx="13.9" cy="17.6" r=".95" fill="currentColor" stroke="none"/>
           </svg>BimRadar</span>
       </h1>
+
+    </header>
+
+    <div class="chiprow" id="chiprow" role="group" aria-label="Show on map">
+      <button class="vchip" id="f-tram" aria-pressed="true" hidden title="Bims — each line in its own colour"><i class="vic" data-kind="tram"></i><b id="ct-tram">0</b></button>
+      <button class="vchip" id="f-bus" aria-pressed="true" hidden title="Stadtbus"><i class="vic" data-kind="bus"></i><b id="ct-bus">0</b></button>
+      <button class="vchip" id="f-regio" aria-pressed="true" hidden title="RegioBus, Fernbus, Sammeltaxi"><i class="vic" data-kind="regio"></i><b id="ct-regio">0</b></button>
+      <button class="vchip" id="f-night" aria-pressed="true" hidden title="Nachtlinien"><i class="vic" data-kind="night"></i><b id="ct-night">0</b></button>
+      <button class="vchip" id="f-train" aria-pressed="true" hidden title="Züge, S-Bahn"><i class="vic" data-kind="train"></i><b id="ct-train">0</b></button>
+      <button class="vchip stop" id="f-stops" aria-pressed="true" title="Haltestellen"><i class="hbadge">H</i><b id="ct-stops">–</b></button>
+      <span class="livedot" id="live" title="live feed"><span class="pulse"></span></span>
       <div class="hright">
         <button class="tbtn" id="btn3d" title="3D view" aria-pressed="false" style="font-size:.72rem;font-weight:700">3D</button>
         <button class="tbtn" id="themebtn" title="Light/dark"></button>
@@ -359,16 +371,6 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg>
         </button>
       </div>
-    </header>
-
-    <div class="chiprow" id="chiprow" role="group" aria-label="Show on map">
-      <button class="vchip" id="f-tram" aria-pressed="true" title="Bims — each line in its own colour"><i class="vic" data-kind="tram"></i><b id="ct-tram">0</b></button>
-      <button class="vchip" id="f-bus" aria-pressed="true" title="Stadtbus"><i class="vic" data-kind="bus"></i><b id="ct-bus">0</b></button>
-      <button class="vchip" id="f-regio" aria-pressed="true" title="RegioBus, Fernbus, Sammeltaxi"><i class="vic" data-kind="regio"></i><b id="ct-regio">0</b></button>
-      <button class="vchip" id="f-night" aria-pressed="true" title="Nachtlinien"><i class="vic" data-kind="night"></i><b id="ct-night">0</b></button>
-      <button class="vchip" id="f-train" aria-pressed="true" title="Züge, S-Bahn"><i class="vic" data-kind="train"></i><b id="ct-train">0</b></button>
-      <button class="vchip stop" id="f-stops" aria-pressed="true" title="Haltestellen"><i class="hbadge">H</i><b id="ct-stops">–</b></button>
-      <span class="livedot" id="live" title="live feed"><span class="pulse"></span></span>
     </div>
     <p class="err" id="err" hidden></p>
 
@@ -2388,7 +2390,10 @@
         if (!seen.has(jid)) { v.marker.setMap(null); vehicles.delete(jid); }
       }
       deoverlap();
-      for (const k of ['tram', 'bus', 'regio', 'night', 'train']) setCount('ct-' + k, counts[k]);
+      for (const k of ['tram', 'bus', 'regio', 'night', 'train']) {
+        setCount('ct-' + k, counts[k]);
+        $('f-' + k).hidden = !counts[k];      // zero-count chips are furniture — hide them
+      }
       applyFilter();
       updateOcclusion();
     }
