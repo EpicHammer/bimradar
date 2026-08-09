@@ -3194,24 +3194,40 @@
         const wdy = (wB.lat - wA.lat) * 110540;
         const wdist = Math.hypot(wdx, wdy);
         if (wdist <= 3000) {
-          const mins = Math.max(1, Math.round(wdist * 1.35 / 80));   // detour factor 1.35, 4.8 km/h
+          const mins = Math.max(1, Math.round(wdist * 1.35 / 80));   // beeline estimate until the router answers
           const card = document.createElement('div');
           card.className = 'opt';
           const wt = document.createElement('div'); wt.className = 'times';
           wt.innerHTML = ICON_WALK + ' Just walk';
           const wd = document.createElement('span'); wd.className = 'dur'; wd.textContent = '~' + mins + ' min';
           wt.appendChild(wd); card.appendChild(wt);
-          card.appendChild(mkEl('div', 'note', (wdist / 1000).toFixed(1) + ' km as the crow flies — often simpler than a one-stop ride'));
+          const wnote = mkEl('div', 'note', (wdist / 1000).toFixed(1) + ' km as the crow flies');
+          card.appendChild(wnote);
+          // fetch the REAL walking route (FOSSGIS/OSM foot router, CORS-open);
+          // beeline stays as the fallback if it fails
+          let walkPath = null;
+          fetch('https://routing.openstreetmap.de/routed-foot/route/v1/foot/' +
+                wA.lng + ',' + wA.lat + ';' + wB.lng + ',' + wB.lat + '?overview=full&geometries=geojson')
+            .then(r => r.json()).then(j => {
+              const rt = j.routes && j.routes[0];
+              if (!rt || !rt.geometry) return;
+              walkPath = rt.geometry.coordinates.map(cc => ({ lng: cc[0], lat: cc[1] }));
+              wd.textContent = '~' + Math.max(1, Math.round(rt.duration / 60)) + ' min';
+              wnote.textContent = (rt.distance / 1000).toFixed(1) + ' km on foot — often simpler than a one-stop ride';
+            }).catch(() => {});
           card.addEventListener('click', () => {
             document.querySelectorAll('.opt.sel').forEach(e2 => e2.classList.remove('sel'));
             card.classList.add('sel'); trip.sel = -1;
             clearTripLine();
-            setSegs('tripwalk', [[wA, wB]],
-              { 'line-color': cssv('--accent'), 'line-opacity': 0.55, 'line-width': 3.5, 'line-dasharray': [0.2, 2] });
+            const pth = walkPath || [wA, wB];
+            setSegs('tripwalk', [pth],
+              { 'line-color': cssv('--accent'), 'line-opacity': 0.65, 'line-width': 4, 'line-dasharray': [0.2, 2] });
             tripLine = 'trip';
             dropPin('from', wA, $('from').value || 'Start');
             dropPin('to', wB, $('to').value || 'Destination');
-            map.fitBounds(new maplibregl.LngLatBounds([wA.lng, wA.lat], [wB.lng, wB.lat]), { padding: 80 });
+            const wb2 = new maplibregl.LngLatBounds();          // extend() — never assume corner order
+            pth.forEach(pt => wb2.extend([pt.lng, pt.lat]));
+            map.fitBounds(wb2, { padding: 80, maxZoom: 16.5 });
           });
           box.appendChild(card);
         }
