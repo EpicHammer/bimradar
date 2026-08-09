@@ -144,6 +144,7 @@
     .iw .ln.sm { font-size: .78rem; padding: 0 .35rem; min-width: 1.9em; text-align: center; }
 
     .chiprow { display: flex; align-items: center; gap: .3rem; margin: .1rem 0 .8rem; flex-wrap: wrap; }
+    .vchip[hidden] { display: none; }   /* .vchip's inline-flex would beat the hidden attribute */
     @media (max-width: 420px) {
       .vchip { font-size: .72rem; padding: .18rem .42rem .18rem .3rem; }
       .chiprow { gap: .25rem; }
