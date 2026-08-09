@@ -628,6 +628,7 @@
       4399927, 8143951,                                            // Uni Graz Hauptgebäude member ways
       75042781,                                                    // TU Neue Technik
       1039587147, 171711442, 1039587145,                            // Anton Paar HQ + production hall (+ hall courtyard)
+      81631019, 444511608,                                          // Schloss Eggenberg ring + courtyard
       1182262494, 235998054, 338134241, 473840147, 171711447,       // Anton Paar campus: offices, garage, halls
       27461369, 31988058, 32348394, 32649766, 1246396386,           // Neue Technik campus: Chemie, Mathe, Biochemie, Physik
       66158360, 75042778, 76042147                                  // …Wasserbau, U-courtyard wing, Chemie annex
@@ -1529,6 +1530,44 @@
             const mcAp = maplibregl.MercatorCoordinate.fromLngLat([15.404004, 47.031157], 0);
             apr.position.set((mcAp.x - T.x) / T.scale, 0, (mcAp.y - T.y) / T.scale);
             scene.add(apr);
+
+            // ---- Schloss Eggenberg (1625) — the calendar palace ----
+            // ~3.9 km W. Square ring around its courtyard (real multipolygon),
+            // four corner towers with steep red tent roofs. Pale walls, red
+            // tile roofs — UNESCO World Heritage together with the old town.
+            const EG_OUT = [[51.3,10.5],[33.8,-20.3],[17.1,-49.2],[-51.3,-7.8],[-43.8,4.5],[-40.1,2.5],[-32.8,15.7],[-20.8,36.4],[-24.3,38.3],[-18.0,49.3]];
+            const EG_HOLE = [[-4.2,-5.4],[-7.9,-12.1],[9.3,-21.5],[15.6,-10.1],[25.4,7.5],[8.2,17.0],[5.7,12.5],[-5.3,18.6],[-2.2,24.1],[-12.9,29.9],[-15.9,24.4],[-19.6,26.4],[-29.6,8.4],[-23.3,5.0],[-27.2,-2.0],[-19.4,-6.3],[-15.5,0.7]];
+            const egg = new THREE.Group();
+            const EGWALL = 0xefe8d4, EGTILE = 0x9c5340;
+            (function () {
+              const mk = () => {
+                const sh = new THREE.Shape();
+                EG_OUT.forEach((p, i) => i ? sh.lineTo(p[0], p[1]) : sh.moveTo(p[0], p[1]));
+                sh.closePath();
+                const hh = new THREE.Path();
+                EG_HOLE.forEach((p, i) => i ? hh.lineTo(p[0], p[1]) : hh.moveTo(p[0], p[1]));
+                hh.closePath(); sh.holes.push(hh);
+                return sh;
+              };
+              const bg = new THREE.ExtrudeGeometry(mk(), { depth: 14, bevelEnabled: false });
+              bg.rotateX(-Math.PI / 2); egg.add(facet(bg, EGWALL, 0.74, 0.4));
+              const rg = new THREE.ExtrudeGeometry(mk(), { depth: 3.5, bevelEnabled: false });
+              rg.rotateX(-Math.PI / 2);
+              const rm = facet(rg, EGTILE, 0.58, 0.45);
+              rm.position.y = 14; egg.add(rm);
+            })();
+            const EG_ROT = Math.atan2(68.4, 41.4);                    // palace axis
+            [[47.7, 9.8], [15.9, -45.8], [-47.7, -7.3], [-16.7, 45.9]].forEach(([E, N]) => {
+              const tw = facet(new THREE.BoxGeometry(12.5, 20, 12.5), EGWALL, 0.74, 0.4);
+              tw.position.set(E, 10, -N); tw.rotation.y = EG_ROT; egg.add(tw);
+              const tent = facet(new THREE.ConeGeometry(8.8, 8.5, 4), EGTILE, 0.56, 0.48);
+              tent.rotation.y = Math.PI / 4 + EG_ROT; tent.position.set(E, 24.2, -N); egg.add(tent);
+              const tip = facet(new THREE.SphereGeometry(0.45, 8, 6), 0xcaa233, 1, 0.1);
+              tip.position.set(E, 28.7, -N); egg.add(tip);
+            });
+            const mcEg = maplibregl.MercatorCoordinate.fromLngLat([15.391366, 47.073929], 0);
+            egg.position.set((mcEg.x - T.x) / T.scale, 0, (mcEg.y - T.y) / T.scale);
+            scene.add(egg);
 
             // ---- Uni Graz Hauptgebäude (Universitätsplatz, 1895) ----
             // ~2.9 km NE. Ring­straßen-style main building around a big courtyard,
