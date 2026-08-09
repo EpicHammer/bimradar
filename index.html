@@ -580,6 +580,13 @@
       if (map && map.getLayer(id)) map.removeLayer(id);
       if (map && map.getSource(id)) map.removeSource(id);
     }
+    // several segments in one dashed layer (walk legs of a journey)
+    function setSegs(id, segs, paint) {
+      removeLine(id);
+      map.addSource(id, { type: 'geojson',
+        data: { type: 'Feature', geometry: { type: 'MultiLineString', coordinates: segs.map(sg => sg.map(p => [p.lng, p.lat])) } } });
+      map.addLayer({ id, type: 'line', source: id, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint });
+    }
 
     // ---------- 3D: tilted camera + extruded buildings ----------
     let pitched = false;
@@ -2959,7 +2966,7 @@
       const h = +t.slice(0, 2), m = +t.slice(2, 4);
       return h ? h + ' h ' + m + ' min' : m + ' min';
     };
-    function clearTripLine() { if (tripLine) { removeLine('trip'); tripLine = null; } }
+    function clearTripLine() { if (tripLine) { removeLine('trip'); removeLine('tripwalk'); tripLine = null; } }
 
     function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
@@ -3121,6 +3128,7 @@
         trip.from = { crd: { x: Math.round(pos.coords.longitude * 1e6), y: Math.round(pos.coords.latitude * 1e6) },
                       name: 'My location' };
         $('from').value = 'My location';
+        dropPin('from', { lat: pos.coords.latitude, lng: pos.coords.longitude }, 'My location');
       }, () => { $('from').value = ''; showTripErr('Could not get your location — type a start instead.'); },
       { enableHighAccuracy: true, timeout: 8000 });
     });
@@ -3172,6 +3180,41 @@
       const box = $('results');
       box.replaceChildren();
       const locL = trip.common.locL || [], prodL = trip.common.prodL || [];
+
+      // Honesty card: for short hops, transit is often sillier than walking.
+      const coW = o => o && o.crd ? { lat: o.crd.y / 1e6, lng: o.crd.x / 1e6 } : null;
+      let wA = coW(trip.from), wB = coW(trip.to);
+      if ((!wA || !wB) && trip.opts.length) {
+        const c0 = trip.opts[0];
+        wA = wA || coW(locL[c0.dep.locX]); wB = wB || coW(locL[c0.arr.locX]);
+      }
+      if (wA && wB) {
+        const wdx = (wB.lng - wA.lng) * 111320 * Math.cos(wA.lat * Math.PI / 180);
+        const wdy = (wB.lat - wA.lat) * 110540;
+        const wdist = Math.hypot(wdx, wdy);
+        if (wdist <= 3000) {
+          const mins = Math.max(1, Math.round(wdist * 1.35 / 80));   // detour factor 1.35, 4.8 km/h
+          const card = document.createElement('div');
+          card.className = 'opt';
+          const wt = document.createElement('div'); wt.className = 'times';
+          wt.innerHTML = ICON_WALK + ' Just walk';
+          const wd = document.createElement('span'); wd.className = 'dur'; wd.textContent = '~' + mins + ' min';
+          wt.appendChild(wd); card.appendChild(wt);
+          card.appendChild(el('div', 'note', (wdist / 1000).toFixed(1) + ' km as the crow flies — often simpler than a one-stop ride'));
+          card.addEventListener('click', () => {
+            document.querySelectorAll('.opt.sel').forEach(e2 => e2.classList.remove('sel'));
+            card.classList.add('sel'); trip.sel = -1;
+            clearTripLine();
+            setSegs('tripwalk', [[wA, wB]],
+              { 'line-color': cssv('--accent'), 'line-opacity': 0.55, 'line-width': 3.5, 'line-dasharray': [0.2, 2] });
+            tripLine = 'trip';
+            dropPin('from', wA, $('from').value || 'Start');
+            dropPin('to', wB, $('to').value || 'Destination');
+            map.fitBounds(new maplibregl.LngLatBounds([wA.lng, wA.lat], [wB.lng, wB.lat]), { padding: 80 });
+          });
+          box.appendChild(card);
+        }
+      }
       if (!trip.opts.length) { box.appendChild(el('p', 'note', 'No connections found.')); return; }
 
       trip.opts.forEach((c, idx) => {
@@ -3257,22 +3300,37 @@
       document.querySelectorAll('.opt.sel').forEach(e => e.classList.remove('sel'));
       card.classList.add('sel');
       trip.sel = idx;
-      // draw the whole journey on the map
+      // draw the whole journey on the map: transit legs solid, walk legs dashed
       clearTripLine();
       const polyL = trip.common.polyL || [];
-      const path = [];
+      const locL = trip.common.locL || [];
+      const coLoc = l => l && l.crd ? { lat: l.crd.y / 1e6, lng: l.crd.x / 1e6 } : null;
+      const path = [], walkSegs = [];
       for (const sec of trip.opts[idx].secL || []) {
         const px = (sec.jny && sec.jny.polyG && sec.jny.polyG.polyXL && sec.jny.polyG.polyXL[0]) ??
                    (sec.gis && sec.gis.polyG && sec.gis.polyG.polyXL && sec.gis.polyG.polyXL[0]);
         const poly = (px != null) ? polyL[px] : null;
-        if (poly && poly.crdEncYX) path.push(...decodePath(poly.crdEncYX));
+        if (poly && poly.crdEncYX) { path.push(...decodePath(poly.crdEncYX)); continue; }
+        if (sec.type !== 'JNY') {
+          // walk legs rarely come with a polyline — draw the connection dashed
+          const wa = coLoc(locL[sec.dep.locX]), wb = coLoc(locL[sec.arr.locX]);
+          if (wa && wb && (wa.lat !== wb.lat || wa.lng !== wb.lng)) walkSegs.push([wa, wb]);
+        }
       }
-      if (path.length && map) {
-        setLine('trip', path, { 'line-color': cssv('--accent'), 'line-opacity': 0.9, 'line-width': 5 });
+      if (map && (path.length || walkSegs.length)) {
+        if (path.length) setLine('trip', path, { 'line-color': cssv('--accent'), 'line-opacity': 0.9, 'line-width': 5 });
+        if (walkSegs.length) setSegs('tripwalk', walkSegs,
+          { 'line-color': cssv('--accent'), 'line-opacity': 0.55, 'line-width': 3.5, 'line-dasharray': [0.2, 2] });
         tripLine = 'trip';
         const b = new maplibregl.LngLatBounds();
         path.forEach(pt => b.extend([pt.lng, pt.lat]));
+        walkSegs.forEach(sg => sg.forEach(pt => b.extend([pt.lng, pt.lat])));
         map.fitBounds(b, { padding: 60 });
+        // A/B pins at the journey's true ends — so "My location" starts are visible
+        const cn = trip.opts[idx];
+        const pA = coLoc(locL[cn.dep.locX]), pB = coLoc(locL[cn.arr.locX]);
+        if (pA) dropPin('from', pA, $('from').value || 'Start');
+        if (pB) dropPin('to', pB, $('to').value || 'Destination');
       }
     }
 
