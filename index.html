@@ -1572,19 +1572,45 @@
             scene.add(egg);
 
             // ---- Graz Hauptbahnhof — the main station ----
-            // Station block from its real footprint, with a stylised sweep of
-            // the RED steel canopy over the Europaplatz tram hub on slim columns.
+            // Station block + glass entrance hall (with the blue 'orbit' band
+            // as a nod to the artwork inside), and the RED WAVE: the undulating
+            // steel canopy over the Europaplatz tram hub, built from arched
+            // shell segments with alternating rise, on slim columns.
             const HB_POLY = [[27.8,16.7],[30.5,6.7],[23.8,4.9],[16.7,3.1],[15.5,2.7],[9.5,1.1],[11.1,-4.8],[13.5,-13.7],[15.9,-22.6],[17.4,-28.0],[19.4,-35.7],[22.3,-46.6],[23.0,-49.1],[24.0,-52.7],[25.6,-58.9],[26.4,-61.6],[27.9,-67.1],[30.1,-75.2],[37.3,-101.9],[39.5,-109.9],[39.8,-111.2],[26.9,-114.7],[26.5,-113.2],[18.7,-115.2],[18.3,-113.7],[16.7,-107.3],[6.1,-66.7],[5.4,-64.3],[2.1,-52.0],[-0.7,-41.2],[-3.1,-32.0],[-13.3,6.8],[-14.1,9.8],[-14.9,12.9],[-17.6,22.7],[-18.4,25.7],[-19.3,28.8],[-24.9,49.9],[-29.0,65.4],[-32.4,78.4],[-33.0,80.5],[-33.3,81.7],[-34.3,85.0],[-36.4,92.3],[-39.8,104.5],[-25.7,108.2],[1.2,115.3],[5.1,100.8],[6.5,95.6],[7.9,90.3],[10.0,82.7],[10.9,79.3],[12.5,73.2],[14.9,64.2],[17.6,54.1],[20.4,44.2],[20.7,42.9],[21.6,39.7],[23.1,34.3],[24.5,29.1],[24.6,28.2],[26.2,22.6],[27.5,17.7]];
+            const HB_CAN = [[38,46],[132,32],[132,-22],[38,-42]];   // canopy region (click + occlusion)
             const hbz = new THREE.Group();
             hbz.add(extrudeFoot(HB_POLY, 14, 0xd9dbdc, 0.75, 0.34));
             const hbRoof = extrudeFoot(scalePoly(HB_POLY, 1.01), 2, 0xeceff0, 0.82, 0.28);
             hbRoof.position.y = 14; hbz.add(hbRoof);
-            const HB_CAN = [[38,46],[132,32],[132,-22],[38,-42]];       // forecourt canopy sweep
-            const hbCan = extrudeFoot(HB_CAN, 1.4, 0xb53d31, 0.8, 0.3);
-            hbCan.position.y = 9; hbz.add(hbCan);
-            for (const [E, N] of [[50,30],[85,25],[118,20],[50,-25],[85,-28],[118,-15],[68,0],[105,2]]) {
-              const col = facet(new THREE.CylinderGeometry(0.5, 0.5, 9, 8), 0xe9edef, 0.75, 0.35);
-              col.position.set(E, 4.5, -N); hbz.add(col);
+            const hbHall = extrudeFoot([[30,32],[44,30],[44,-30],[30,-32]], 17, 0x9db8c6, 0.78, 0.3);
+            hbz.add(hbHall);                                        // glass entrance hall
+            const hbHallRoof = extrudeFoot([[29,33],[45,31],[45,-31],[29,-33]], 1.6, 0xeceff0, 0.84, 0.26);
+            hbHallRoof.position.y = 17; hbz.add(hbHallRoof);
+            const hbBlue = extrudeFoot([[30.4,32],[44.4,30],[44.4,-30],[30.4,-32]], 1.4, 0x2b5ea7, 0.8, 0.3);
+            hbBlue.position.y = 11; hbz.add(hbBlue);                // the blue 'orbit' band
+            // double-sided smooth-shaded shell for the canopy segments
+            const hbSheet = (geo, hex, amb, gain) => {
+              geo.computeVertexNormals();
+              const nrm = geo.attributes.normal, pos = geo.attributes.position, base = new THREE.Color(hex), col = new Float32Array(pos.count * 3), v = new THREE.Vector3();
+              for (let i = 0; i < pos.count; i++) {
+                v.set(nrm.getX(i), nrm.getY(i), nrm.getZ(i));
+                const f = Math.min(1.12, amb + gain * Math.abs(v.dot(LIGHT)));
+                col[i * 3] = base.r * f; col[i * 3 + 1] = base.g * f; col[i * 3 + 2] = base.b * f;
+              }
+              geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+              return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+            };
+            [[50, 10.6], [74, 11.8], [98, 10.6], [122, 11.8]].forEach(([E, top]) => {
+              const R = 25;
+              const g = new THREE.CylinderGeometry(R, R, 84, 20, 1, true, Math.PI - 0.5, 1.0);
+              g.rotateX(Math.PI / 2);                               // arch axis along N-S
+              const mesh = hbSheet(g, 0xb53d31, 0.62, 0.4);
+              mesh.position.set(E, top - R, -2);                    // shell crest reaches `top`
+              hbz.add(mesh);
+            });
+            for (const [E, N] of [[50,36],[74,40],[98,36],[122,30],[50,-28],[74,-34],[98,-30],[122,-20],[62,4],[110,6]]) {
+              const colm = facet(new THREE.CylinderGeometry(0.45, 0.45, 9.5, 8), 0xe9edef, 0.75, 0.35);
+              colm.position.set(E, 4.75, -N); hbz.add(colm);
             }
             const mcHb = maplibregl.MercatorCoordinate.fromLngLat([15.417193, 47.072229], 0);
             hbz.position.set((mcHb.x - T.x) / T.scale, 0, (mcHb.y - T.y) / T.scale);
