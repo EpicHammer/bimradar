@@ -629,6 +629,8 @@
       75042781,                                                    // TU Neue Technik
       1039587147, 171711442, 1039587145,                            // Anton Paar HQ + production hall (+ hall courtyard)
       81631019, 444511608,                                          // Schloss Eggenberg ring + courtyard
+      27561430, 121500989, 85220561, 85220602, 85220632,            // Hauptbahnhof, Mariatrost, Landhaus + courtyards
+      5130931, 183465511, 352749432,                                // Merkur Arena bowl + pitch, Science Tower
       1182262494, 235998054, 338134241, 473840147, 171711447,       // Anton Paar campus: offices, garage, halls
       27461369, 31988058, 32348394, 32649766, 1246396386,           // Neue Technik campus: Chemie, Mathe, Biochemie, Physik
       66158360, 75042778, 76042147                                  // …Wasserbau, U-courtyard wing, Chemie annex
@@ -1569,6 +1571,138 @@
             egg.position.set((mcEg.x - T.x) / T.scale, 0, (mcEg.y - T.y) / T.scale);
             scene.add(egg);
 
+            // ---- Graz Hauptbahnhof — the main station ----
+            // Station block from its real footprint, with a stylised sweep of
+            // the RED steel canopy over the Europaplatz tram hub on slim columns.
+            const HB_POLY = [[27.8,16.7],[30.5,6.7],[23.8,4.9],[16.7,3.1],[15.5,2.7],[9.5,1.1],[11.1,-4.8],[13.5,-13.7],[15.9,-22.6],[17.4,-28.0],[19.4,-35.7],[22.3,-46.6],[23.0,-49.1],[24.0,-52.7],[25.6,-58.9],[26.4,-61.6],[27.9,-67.1],[30.1,-75.2],[37.3,-101.9],[39.5,-109.9],[39.8,-111.2],[26.9,-114.7],[26.5,-113.2],[18.7,-115.2],[18.3,-113.7],[16.7,-107.3],[6.1,-66.7],[5.4,-64.3],[2.1,-52.0],[-0.7,-41.2],[-3.1,-32.0],[-13.3,6.8],[-14.1,9.8],[-14.9,12.9],[-17.6,22.7],[-18.4,25.7],[-19.3,28.8],[-24.9,49.9],[-29.0,65.4],[-32.4,78.4],[-33.0,80.5],[-33.3,81.7],[-34.3,85.0],[-36.4,92.3],[-39.8,104.5],[-25.7,108.2],[1.2,115.3],[5.1,100.8],[6.5,95.6],[7.9,90.3],[10.0,82.7],[10.9,79.3],[12.5,73.2],[14.9,64.2],[17.6,54.1],[20.4,44.2],[20.7,42.9],[21.6,39.7],[23.1,34.3],[24.5,29.1],[24.6,28.2],[26.2,22.6],[27.5,17.7]];
+            const hbz = new THREE.Group();
+            hbz.add(extrudeFoot(HB_POLY, 14, 0xd9dbdc, 0.75, 0.34));
+            const hbRoof = extrudeFoot(scalePoly(HB_POLY, 1.01), 2, 0xeceff0, 0.82, 0.28);
+            hbRoof.position.y = 14; hbz.add(hbRoof);
+            const HB_CAN = [[38,46],[132,32],[132,-22],[38,-42]];       // forecourt canopy sweep
+            const hbCan = extrudeFoot(HB_CAN, 1.4, 0xb53d31, 0.8, 0.3);
+            hbCan.position.y = 9; hbz.add(hbCan);
+            for (const [E, N] of [[50,30],[85,25],[118,20],[50,-25],[85,-28],[118,-15],[68,0],[105,2]]) {
+              const col = facet(new THREE.CylinderGeometry(0.5, 0.5, 9, 8), 0xe9edef, 0.75, 0.35);
+              col.position.set(E, 4.5, -N); hbz.add(col);
+            }
+            const mcHb = maplibregl.MercatorCoordinate.fromLngLat([15.417193, 47.072229], 0);
+            hbz.position.set((mcHb.x - T.x) / T.scale, 0, (mcHb.y - T.y) / T.scale);
+            scene.add(hbz);
+
+            // ---- Basilika Mariatrost — twin towers over the tram-1 terminus ----
+            const MT_POLY = [[-30.0,6.2],[-26.7,-2.1],[-24.0,-8.4],[-21.4,-14.4],[-21.2,-14.8],[-17.5,-23.1],[-15.9,-22.6],[-9.9,-19.6],[-11.1,-16.3],[6.7,-9.1],[8.2,-12.3],[22.7,-6.2],[19.7,1.2],[27.4,4.4],[30.0,7.0],[29.9,11.2],[27.7,15.4],[24.3,18.5],[21.4,18.9],[13.1,15.6],[9.6,23.2],[-4.9,17.0],[-3.4,13.8],[-21.0,6.2],[-22.4,9.7],[-28.8,6.7]];
+            const mtb = new THREE.Group();
+            const MTYELL = 0xe9cf95, MTTILE = 0x9a5340, MTPAT = 0x6f8f84;
+            mtb.add(extrudeFoot(MT_POLY, 13, MTYELL, 0.74, 0.4));
+            (function () {
+              let cx = 0, cz = 0; MT_POLY.forEach(p => { cx += p[0]; cz += -p[1]; }); cx /= MT_POLY.length; cz /= MT_POLY.length;
+              const A = new THREE.Vector3(cx, 20, cz), pos = [], col = [], base = new THREE.Color(MTTILE);
+              for (let i = 0; i < MT_POLY.length; i++) {
+                const p0 = MT_POLY[i], p1 = MT_POLY[(i + 1) % MT_POLY.length];
+                const a = new THREE.Vector3(p0[0], 13, -p0[1]), b = new THREE.Vector3(p1[0], 13, -p1[1]);
+                const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(A, a)).normalize(); if (n.y < 0) n.negate();
+                const f = Math.min(1.12, 0.55 + 0.5 * Math.max(0, n.dot(LIGHT)));
+                pos.push(a.x, a.y, a.z, b.x, b.y, b.z, A.x, A.y, A.z); for (let k = 0; k < 3; k++) col.push(base.r * f, base.g * f, base.b * f);
+              }
+              const rg = new THREE.BufferGeometry();
+              rg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+              rg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+              mtb.add(new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+            })();
+            const MT_ROT = Math.atan2(3.7, 8.3);
+            const mtOnion = [[0.2,0],[3.4,0.7],[3.9,2.6],[3.2,4.7],[1.9,6.3],[0.9,7.5],[0.4,8.4],[0,9.2]].map(p => new THREE.Vector2(p[0], p[1]));
+            [[-19.5,-17.5],[-11,-21]].forEach(([E, N]) => {
+              const tw = facet(new THREE.BoxGeometry(6.2, 30, 6.2), MTYELL, 0.74, 0.4);
+              tw.position.set(E, 15, -N); tw.rotation.y = MT_ROT; mtb.add(tw);
+              const helm = smoothG(new THREE.LatheGeometry(mtOnion, 16), MTPAT, 0.5, 0.5);
+              helm.position.set(E, 30.4, -N); mtb.add(helm);
+              const tip = facet(new THREE.SphereGeometry(0.4, 8, 6), 0xcaa233, 1, 0.1);
+              tip.position.set(E, 40.2, -N); mtb.add(tip);
+            });
+            const mtLan = facet(new THREE.CylinderGeometry(2.6, 2.6, 4, 8), MTYELL, 0.75, 0.4);
+            mtLan.position.set(5, 22, -2); mtb.add(mtLan);              // crossing lantern
+            const mtCap = smoothG(new THREE.LatheGeometry(mtOnion.map(v => new THREE.Vector2(v.x * 0.75, v.y * 0.7)), 14), MTPAT, 0.5, 0.5);
+            mtCap.position.set(5, 24, -2); mtb.add(mtCap);
+            const mcMt = maplibregl.MercatorCoordinate.fromLngLat([15.491561, 47.107248], 0);
+            mtb.position.set((mcMt.x - T.x) / T.scale, 0, (mcMt.y - T.y) / T.scale);
+            scene.add(mtb);
+
+            // ---- Landhaus — Renaissance parliament with arcaded courtyards ----
+            const LD_OUT = [[7.2,58.6],[19.7,43.9],[51.7,5.2],[40.3,-5.8],[28.0,-16.8],[13.7,-30.1],[6.0,-21.2],[15.4,-13.0],[19.1,-9.8],[36.4,5.4],[33.2,9.2],[25.6,2.9],[20.8,8.5],[19.2,10.4],[3.3,29.3],[-3.2,37.0],[-13.2,28.0],[-9.9,23.7],[-15.5,18.6],[-12.9,15.1],[-4.0,3.1],[-3.9,3.2],[1.1,-3.5],[2.5,-5.5],[-7.8,-14.0],[3.8,-31.5],[1.5,-32.7],[5.3,-38.2],[8.6,-43.6],[1.2,-47.6],[-1.1,-43.9],[-7.8,-48.0],[-5.8,-51.4],[-17.5,-58.6],[-43.3,-12.6],[-51.6,2.3],[-27.1,27.3],[-25.4,29.1]];
+            const LD_H1 = [[-19.4,-36.2],[-8.6,-29.8],[-15.7,-18.1],[-25.7,-24.8]];
+            const LD_H2 = [[-17.7,-5.2],[-24.7,4.1],[-27.7,8.0],[-40.7,-2.2],[-37.5,-7.4],[-32.6,-15.7]];
+            const ldh = new THREE.Group();
+            (function () {
+              const mk = () => {
+                const sh = new THREE.Shape();
+                LD_OUT.forEach((p, i) => i ? sh.lineTo(p[0], p[1]) : sh.moveTo(p[0], p[1]));
+                sh.closePath();
+                for (const hole of [LD_H1, LD_H2]) {
+                  const hh = new THREE.Path();
+                  hole.forEach((p, i) => i ? hh.lineTo(p[0], p[1]) : hh.moveTo(p[0], p[1]));
+                  hh.closePath(); sh.holes.push(hh);
+                }
+                return sh;
+              };
+              const bg = new THREE.ExtrudeGeometry(mk(), { depth: 15, bevelEnabled: false });
+              bg.rotateX(-Math.PI / 2); ldh.add(facet(bg, 0xe9dfc6, 0.74, 0.4));
+              const rg = new THREE.ExtrudeGeometry(mk(), { depth: 3, bevelEnabled: false });
+              rg.rotateX(-Math.PI / 2);
+              const rm = facet(rg, 0x9a5a44, 0.58, 0.45);
+              rm.position.y = 15; ldh.add(rm);
+            })();
+            const ldTur = facet(new THREE.BoxGeometry(4.5, 22, 4.5), 0xe9dfc6, 0.74, 0.4);
+            ldTur.position.set(-40, 11, 7); ldh.add(ldTur);             // clock turret, Herrengasse front
+            const ldOn = smoothG(new THREE.LatheGeometry([[0.15,0],[2.4,0.5],[2.7,1.8],[2.2,3.3],[1.2,4.5],[0.5,5.4],[0,6.2]].map(p => new THREE.Vector2(p[0], p[1])), 14), 0x6f8f84, 0.5, 0.5);
+            ldOn.position.set(-40, 22.2, 7); ldh.add(ldOn);
+            const ldTip = facet(new THREE.SphereGeometry(0.35, 8, 6), 0xcaa233, 1, 0.1);
+            ldTip.position.set(-40, 28.8, 7); ldh.add(ldTip);
+            const mcLd = maplibregl.MercatorCoordinate.fromLngLat([15.439331, 47.069732], 0);
+            ldh.position.set((mcLd.x - T.x) / T.scale, 0, (mcLd.y - T.y) / T.scale);
+            scene.add(ldh);
+
+            // ---- Merkur Arena — the football bowl in Liebenau ----
+            const AR_OUT = [[26.5,86.1],[25.1,86.9],[20.2,89.5],[17.1,91.2],[11.9,91.9],[6.8,92.7],[3.7,92.1],[-4.2,90.6],[-8.3,88.5],[-22.4,81.3],[-37.1,73.8],[-51.7,66.4],[-67.8,58.2],[-72.6,55.7],[-77.0,52.0],[-80.3,49.2],[-83.9,41.4],[-84.8,36.2],[-85.6,30.7],[-82.6,21.4],[-81.7,18.8],[-80.3,16.0],[-73.6,2.1],[-66.3,-12.3],[-58.8,-26.9],[-51.3,-42.8],[-43.4,-57.9],[-36.0,-73.1],[-33.6,-78.1],[-25.0,-87.7],[-16.4,-91.5],[-5.4,-92.7],[6.3,-89.4],[8.9,-88.0],[22.5,-81.2],[31.6,-76.6],[37.1,-73.8],[51.8,-66.3],[62.9,-60.7],[66.0,-59.2],[69.5,-57.5],[77.0,-51.6],[80.2,-47.7],[81.8,-42.1],[83.9,-35.5],[85.5,-30.6],[82.4,-20.9],[80.2,-16.5],[72.6,-1.3],[65.3,13.3],[57.9,28.2],[50.6,42.7],[42.5,58.8],[35.6,72.8],[33.7,76.6],[32.5,78.8]];
+            const AR_PITCH = [[-61.1,33.6],[9.9,68.8],[61.6,-33.8],[-9.4,-69.1]];
+            const arn = new THREE.Group();
+            (function () {
+              const mk = (fo, fi) => {
+                const sh = new THREE.Shape();
+                scalePoly(AR_OUT, fo).forEach((p, i) => i ? sh.lineTo(p[0], p[1]) : sh.moveTo(p[0], p[1]));
+                sh.closePath();
+                const hh = new THREE.Path();
+                scalePoly(AR_OUT, fi).forEach((p, i) => i ? hh.lineTo(p[0], p[1]) : hh.moveTo(p[0], p[1]));
+                hh.closePath(); sh.holes.push(hh);
+                return sh;
+              };
+              const stand = new THREE.ExtrudeGeometry(mk(1, 0.62), { depth: 14, bevelEnabled: false });
+              stand.rotateX(-Math.PI / 2); arn.add(facet(stand, 0xd8dadb, 0.74, 0.34));
+              const roof = new THREE.ExtrudeGeometry(mk(1.03, 0.7), { depth: 1.6, bevelEnabled: false });
+              roof.rotateX(-Math.PI / 2);
+              const rm = facet(roof, 0x4a4f52, 0.62, 0.35);
+              rm.position.y = 15; arn.add(rm);
+            })();
+            const arPitch = extrudeFoot(scalePoly(AR_PITCH, 0.7), 0.6, 0x3e7a45, 0.8, 0.3);
+            arn.add(arPitch);
+            const mcAr = maplibregl.MercatorCoordinate.fromLngLat([15.45478, 47.046363], 0);
+            arn.position.set((mcAr.x - T.x) / T.scale, 0, (mcAr.y - T.y) / T.scale);
+            scene.add(arn);
+
+            // ---- Science Tower — the energy-glass cylinder of the Smart City ----
+            const SC_POLY = [[2.2,-11.5],[4.2,-10.9],[5.5,-10.3],[8.4,-8.2],[10.5,-5.3],[11.6,-1.9],[11.7,1.6],[10.6,5.1],[8.6,8.0],[5.7,10.2],[2.3,11.5],[0.0,11.6],[-1.3,11.6],[-4.9,10.6],[-8.1,8.5],[-10.4,5.6],[-11.6,2.0],[-11.7,-1.7],[-10.5,-5.3],[-8.3,-8.3],[-5.2,-10.5],[-2.6,-11.4],[-1.3,-11.6],[0.9,-11.7]];
+            const sct = new THREE.Group();
+            sct.add(extrudeFoot(SC_POLY, 56, 0x9fb9c7, 0.78, 0.3));
+            for (let y = 5; y < 56; y += 5) {
+              const ring = extrudeFoot(scalePoly(SC_POLY, 1.015), 0.5, 0x7b93a1, 0.7, 0.3);
+              ring.position.y = y; sct.add(ring);
+            }
+            const scCrown = extrudeFoot(scalePoly(SC_POLY, 1.03), 2.2, 0xeff1f2, 0.84, 0.26);
+            scCrown.position.y = 56; sct.add(scCrown);
+            const mcSc = maplibregl.MercatorCoordinate.fromLngLat([15.411099, 47.079885], 0);
+            sct.position.set((mcSc.x - T.x) / T.scale, 0, (mcSc.y - T.y) / T.scale);
+            scene.add(sct);
+
             // ---- Uni Graz Hauptgebäude (Universitätsplatz, 1895) ----
             // ~2.9 km NE. Ring­straßen-style main building around a big courtyard,
             // with a raised risalit + slate cupola on the SW (plaza) facade.
@@ -1642,6 +1776,16 @@
                   { p: BG_W, h: 15.5, n: 'West Wing', i: "The western wing of the Burg complex, toward the Hofgasse." },
                   { p: BT_POLY, h: 11, n: 'Burgtor', i: "The castle gate - the historic passage between the old town and the Stadtpark ring." }
                 ] },
+              { name: 'Graz Hauptbahnhof', info: "The city's main station - rebuilt 2003-2015 with the sweeping red steel canopy over the Europaplatz tram hub and the blue 'orbit' swirl inside the hall. Every S-Bahn line and half the tram network meet here.",
+                lng: 15.417193,  lat: 47.072229,  polys: [{ p: HB_POLY, h: 16 }, { p: HB_CAN, h: 11 }] },
+              { name: 'Basilika Mariatrost', info: "Late-Baroque pilgrimage basilica (1714-1779) on the Purberg, reached by 216 steps - or by tram 1, which ends at its foot. The twin towers are visible across half the city.",
+                lng: 15.491561,  lat: 47.107248,  polys: [{ p: MT_POLY, h: 20 }, { p: [[-23,-21],[-16,-21],[-16,-14],[-23,-14]], h: 42 }, { p: [[-15,-25],[-8,-25],[-8,-18],[-15,-18]], h: 42 }] },
+              { name: 'Landhaus', info: "Seat of the Styrian parliament - Renaissance masterpiece by Domenico dell'Allio (1557-1565) with Austria's finest arcaded courtyard. Adjoining it: the Landeszeughaus, the world's largest historic armoury (~32,000 objects).",
+                lng: 15.439331,  lat: 47.069732,  polys: [{ p: LD_OUT, h: 18 }] },
+              { name: 'Merkur Arena', info: "Graz's football stadium in Liebenau (opened 1997, ~16,000 seats) - home ground of both Sturm Graz and GAK.",
+                lng: 15.45478,   lat: 47.046363,  polys: [{ p: AR_OUT, h: 17 }] },
+              { name: 'Science Tower', info: "60 m research tower of the Smart City quarter (2017). Its 'energy glass' facade generates electricity - the landmark of the new Graz west.",
+                lng: 15.411099,  lat: 47.079885,  polys: [{ p: SC_POLY, h: 60 }] },
               { name: 'Schloss Eggenberg', info: "Baroque residence built from 1625 for Hans Ulrich von Eggenberg - an architectural calendar: 4 towers for the seasons, 12 gates for the months and 365 windows. UNESCO World Heritage together with the old town.",
                 lng: 15.391366,  lat: 47.073929,  polys: [{ p: EG_OUT, h: 18 }, { p: [[41,3],[54,3],[54,17],[41,17]], h: 29 }, { p: [[9,-52],[23,-52],[23,-39],[9,-39]], h: 29 }, { p: [[-54,-14],[-41,-14],[-41,-1],[-54,-1]], h: 29 }, { p: [[-23,39],[-10,39],[-10,52],[-23,52]], h: 29 }] },
               { name: 'Paulustor', info: 'Renaissance city gate of the outer fortifications (c. 1620) at the foot of the Schlossberg.',
