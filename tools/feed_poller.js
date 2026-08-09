@@ -92,6 +92,16 @@ function project(pos, pts) {
   return best;
 }
 
+/** Cumulative metres along a polyline — lets us compare route progress. */
+function cumDist(pts) {
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) {
+    const ky = 111320.0, kx = 111320.0 * Math.cos(pts[i - 1][0] * Math.PI / 180);
+    cum.push(cum[i - 1] + Math.hypot((pts[i][1] - pts[i - 1][1]) * kx, (pts[i][0] - pts[i - 1][0]) * ky));
+  }
+  return cum;
+}
+
 /** Intermediate polyline vertices between two positions, [] if none/implausible. */
 function pathBetween(prev, cur, pts) {
   const [i1, t1, d1] = project(prev, pts);
@@ -105,6 +115,7 @@ function pathBetween(prev, cur, pts) {
 class PolyCache {
   constructor() {
     this.polys = new Map();     // jid -> [[lat,lng],...] | null (fetch failed)
+    this.cums = new Map();      // jid -> cumulative metres along that polyline
     this.failedAt = new Map();  // jid -> epoch s of failed fetch
     this.seen = new Map();      // jid -> epoch s last seen in feed
   }
@@ -130,6 +141,7 @@ class PolyCache {
       if (ts < cut) {
         this.seen.delete(jid);
         this.polys.delete(jid);
+        this.cums.delete(jid);
         this.failedAt.delete(jid);
       }
     }
@@ -141,6 +153,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function main() {
   const cache = new PolyCache();
   const prevPos = new Map();    // jid -> [lat, lng] of the previous cycle's report
+  const prevProg = new Map();   // jid -> metres of route progress last published
   for (;;) {
     const t0 = Date.now();
     try {
@@ -176,10 +189,22 @@ async function main() {
         if (pts && pts.length >= 2) {
           const [i, t, dist] = project(cur, pts);
           if (dist <= 80) {
-            const a = pts[i], b = pts[i + 1];
-            cur = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+            const cum = cache.cums.get(jid) || (cache.cums.set(jid, cumDist(pts)), cache.cums.get(jid));
+            let prog = cum[i] + t * (cum[i + 1] - cum[i]);
+            const last = prevProg.get(jid);
+            // HAFAS re-interpolates on delay updates and can step BACKWARDS.
+            // Real trams don't reverse mid-route: hold position on small
+            // regressions (jitter); accept big ones (>150 m — reroute/new leg).
+            if (last != null && prog < last - 8 && last - prog < 150 && prevPos.has(jid)) {
+              cur = prevPos.get(jid);
+              prog = last;
+            } else {
+              const a = pts[i], b = pts[i + 1];
+              cur = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+            }
             j.pos.y = Math.round(cur[0] * 1e6);
             j.pos.x = Math.round(cur[1] * 1e6);
+            prevProg.set(jid, prog);
           }
         }
         const prev = prevPos.get(jid);
@@ -190,7 +215,7 @@ async function main() {
         prevPos.set(jid, cur);
       }
       for (const jid of [...prevPos.keys()]) {
-        if (!cache.seen.has(jid)) prevPos.delete(jid);
+        if (!cache.seen.has(jid)) { prevPos.delete(jid); prevProg.delete(jid); }
       }
       cache.evict();
 
