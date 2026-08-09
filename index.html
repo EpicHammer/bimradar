@@ -105,10 +105,14 @@
     }
 
     header { display: flex; align-items: center; justify-content: space-between; gap: .8rem; margin-bottom: .5rem; }
+    /* installed as an app: the home-screen icon already carries the name —
+       inside, the header shrinks to a slim control row */
+    @media all and (display-mode: standalone) {
+      header h1 { display: none; }
+      header { justify-content: flex-end; margin-bottom: .35rem; }
+    }
     h1 { font-size: 1.3rem; margin: 0; font-weight: 700; letter-spacing: -0.02em; }
     h1 .brandrow { display: flex; align-items: center; gap: .5rem; }
-    h1 small { display: block; font-size: .72rem; font-weight: 500; color: var(--muted);
-      letter-spacing: 0; white-space: nowrap; margin-top: 1px; }
     .brandmark { flex: none; width: 21px; height: 21px; color: var(--fg); }
     .hright { display: flex; gap: .4rem; }
     .tbtn { width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--line);
@@ -139,6 +143,10 @@
     .iw .ln.sm { font-size: .78rem; padding: 0 .35rem; min-width: 1.9em; text-align: center; }
 
     .chiprow { display: flex; align-items: center; gap: .3rem; margin: .1rem 0 .8rem; flex-wrap: wrap; }
+    @media (max-width: 420px) {
+      .vchip { font-size: .72rem; padding: .18rem .42rem .18rem .3rem; }
+      .chips { gap: .3rem; }
+    }
     .vchip {
       display: inline-flex; align-items: center; gap: .3rem;
       border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
@@ -343,7 +351,6 @@
             <circle cx="10.1" cy="17.6" r=".95" fill="currentColor" stroke="none"/>
             <circle cx="13.9" cy="17.6" r=".95" fill="currentColor" stroke="none"/>
           </svg>BimRadar</span>
-        <small>Bims &amp; Busse, live in Graz</small>
       </h1>
       <div class="hright">
         <button class="tbtn" id="btn3d" title="3D view" aria-pressed="false" style="font-size:.72rem;font-weight:700">3D</button>
