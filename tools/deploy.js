@@ -36,7 +36,6 @@ async function main() {
   }
   fs.writeFileSync(LOCK, String(process.pid));
   try {
-    const pollerBefore = fs.readFileSync(path.join(REPO, 'tools/feed_poller.js'), 'utf8');
     log('pulling…');
     log(git('pull', '--ff-only', 'origin', 'main'));
     const sha = git('rev-parse', '--short', 'HEAD');
@@ -58,12 +57,19 @@ async function main() {
     fs.writeFileSync(swPath, sw);
     log('app files copied, SW cache = bimradar-' + sha);
 
-    // the poller runs straight from the repo checkout: restart it iff it changed
-    const pollerAfter = fs.readFileSync(path.join(REPO, 'tools/feed_poller.js'), 'utf8');
-    if (pollerBefore !== pollerAfter) {
-      log('feed_poller.js changed — restarting bimradar-feed');
+    // the poller runs straight from the repo checkout: restart it iff its
+    // content differs from what was running at the LAST deploy. (Comparing
+    // before/after the pull misses pushes made from this box, where the file
+    // is already new before the pull.)
+    const pollerHash = require('node:crypto').createHash('sha256')
+      .update(fs.readFileSync(path.join(REPO, 'tools/feed_poller.js'))).digest('hex');
+    const hashFile = path.join(BACKUPS, '.poller-sha256');
+    const lastHash = fs.existsSync(hashFile) ? fs.readFileSync(hashFile, 'utf8') : null;
+    if (lastHash && lastHash !== pollerHash) {
+      log('feed_poller.js changed since last deploy — restarting bimradar-feed');
       execFileSync('sudo', ['-n', 'systemctl', 'restart', 'bimradar-feed']);
     }
+    fs.writeFileSync(hashFile, pollerHash);
 
     // health check the real site; roll back the two critical files on failure
     const resp = await fetch('https://bimradar.at/?deploycheck=' + sha, { signal: AbortSignal.timeout(10000) });
