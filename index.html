@@ -2918,6 +2918,7 @@
     // Trip planning: LocMatch for search, TripSearch for connections
     // =====================================================================
     const trip = { from: null, to: null, opts: [], sel: -1 };
+    const mkEl = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; };
     let tripLine = null;
     let armed = null;              // 'from' | 'to' — the field a map tap will fill
     const pins = { from: null, to: null };
@@ -3200,7 +3201,7 @@
           wt.innerHTML = ICON_WALK + ' Just walk';
           const wd = document.createElement('span'); wd.className = 'dur'; wd.textContent = '~' + mins + ' min';
           wt.appendChild(wd); card.appendChild(wt);
-          card.appendChild(el('div', 'note', (wdist / 1000).toFixed(1) + ' km as the crow flies — often simpler than a one-stop ride'));
+          card.appendChild(mkEl('div', 'note', (wdist / 1000).toFixed(1) + ' km as the crow flies — often simpler than a one-stop ride'));
           card.addEventListener('click', () => {
             document.querySelectorAll('.opt.sel').forEach(e2 => e2.classList.remove('sel'));
             card.classList.add('sel'); trip.sel = -1;
@@ -3215,7 +3216,7 @@
           box.appendChild(card);
         }
       }
-      if (!trip.opts.length) { box.appendChild(el('p', 'note', 'No connections found.')); return; }
+      if (!trip.opts.length) { box.appendChild(mkEl('p', 'note', 'No connections found.')); return; }
 
       trip.opts.forEach((c, idx) => {
         const card = document.createElement('div');
