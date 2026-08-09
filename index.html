@@ -359,7 +359,7 @@
       <button class="vchip" id="f-bus" aria-pressed="true" title="Stadtbus"><i class="vic" data-kind="bus"></i><b id="ct-bus">0</b></button>
       <button class="vchip" id="f-regio" aria-pressed="true" title="RegioBus, Fernbus, Sammeltaxi"><i class="vic" data-kind="regio"></i><b id="ct-regio">0</b></button>
       <button class="vchip" id="f-night" aria-pressed="true" title="Nachtlinien"><i class="vic" data-kind="night"></i><b id="ct-night">0</b></button>
-      <button class="vchip" id="f-train" aria-pressed="false" title="Züge, S-Bahn"><i class="vic" data-kind="train"></i><b id="ct-train">0</b></button>
+      <button class="vchip" id="f-train" aria-pressed="true" title="Züge, S-Bahn"><i class="vic" data-kind="train"></i><b id="ct-train">0</b></button>
       <button class="vchip stop" id="f-stops" aria-pressed="true" title="Haltestellen"><i class="hbadge">H</i><b id="ct-stops">–</b></button>
       <span class="livedot" id="live" title="live feed"><span class="pulse"></span></span>
     </div>
@@ -498,7 +498,7 @@
     fetch('./lines.json').then(r => r.ok ? r.json() : {}).then(d => { LINES = d; }).catch(() => {});
     const vehicles = new Map();   // jid -> {marker, kind, line, dir, from, to, t0, dur, head}
     const LMK_OCC = [];           // landmark occluders, filled once by the 3D layer's onAdd
-    const filters = { tram: true, bus: true, regio: true, night: true, train: false };
+    const filters = { tram: true, bus: true, regio: true, night: true, train: true };
     let pollTimer = null, lastOk = 0, inFlight = false;
     const stops = new Map();          // extId -> marker
     let stopsOn = true, stopsBusy = false, lastStopKey = '';
@@ -1733,8 +1733,8 @@
       tram: 'M 0,-16 L 5,-11 L 5,12 Q 5,14.5 2.6,14.5 L -2.6,14.5 Q -5,14.5 -5,12 L -5,-11 Z',
       // shorter, rounded nose
       bus:  'M 0,-11.5 Q 4.4,-11.5 4.4,-8 L 4.4,8.5 Q 4.4,11 2.2,11 L -2.2,11 Q -4.4,11 -4.4,8.5 L -4.4,-8 Q -4.4,-11.5 0,-11.5 Z',
-      // longest, blunt front
-      train: 'M 0,-18 L 4.6,-13 L 4.6,14 Q 4.6,16.5 2.3,16.5 L -2.3,16.5 Q -4.6,16.5 -4.6,14 L -4.6,-13 Z',
+      // longest; cabs at BOTH ends (S-Bahn consists reverse, they never turn)
+      train: 'M 0,-18 Q 4.6,-17.4 4.6,-14 L 4.6,14 Q 4.6,17.4 0,18 Q -4.6,17.4 -4.6,14 L -4.6,-14 Q -4.6,-17.4 0,-18 Z',
       // funicular: a short, SYMMETRIC boxy car (cabs at both ends — it never turns around)
       cable: 'M -4.4,-10.5 Q -4.4,-13 -2,-13 L 2,-13 Q 4.4,-13 4.4,-10.5 L 4.4,10.5 Q 4.4,13 2,13 L -2,13 Q -4.4,13 -4.4,10.5 Z'
     };
@@ -1776,13 +1776,25 @@
         '<rect x="3.85" y="-6.2" width=".75" height="3.2" rx=".3" fill="#fff" opacity=".38"/>' +
         '<rect x="3.85" y="3.4" width=".75" height="3.2" rx=".3" fill="#fff" opacity=".38"/>',
       train: c =>
-        '<path d="M 0,-24 L 4.8,-18.5 L 5,-16 L 5,22 Q 5,24 2.6,24 L -2.6,24 Q -5,24 -5,22 L -5,-16 L -4.8,-18.5 Z" fill="' + c + '" stroke="#fff" stroke-width="1.6"/>' +
-        '<path d="M -3.4,-21 Q 0,-23.2 3.4,-21 L 2.9,-18 L -2.9,-18 Z" fill="#000" opacity=".5"/>' +
-        '<rect x="-5" y="-1.1" width="10" height="2.2" rx=".6" fill="#000" opacity=".28"/>' +
-        '<rect x="-1" y="-15" width="2" height="12" rx=".8" fill="#fff" opacity=".16"/>' +
-        '<rect x="-1" y="3" width="2" height="18" rx=".8" fill="#fff" opacity=".16"/>' +
-        '<rect x="4.15" y="-9" width=".85" height="3.6" rx=".3" fill="#fff" opacity=".38"/>' +
-        '<rect x="-5" y="-9" width=".85" height="3.6" rx=".3" fill="#fff" opacity=".38"/>',
+        // three-car S-Bahn consist: body, red cab noses both ends, dark car
+        // gaps, roof AC boxes, a pantograph, and door hints per car
+        '<path d="M 0,-24 Q 4.9,-23.3 5,-19.5 L 5,19.5 Q 4.9,23.3 0,24 Q -4.9,23.3 -5,19.5 L -5,-19.5 Q -4.9,-23.3 0,-24 Z" fill="' + c + '" stroke="#fff" stroke-width="1.6"/>' +
+        '<path d="M 0,-24 Q 4.9,-23.3 5,-19.5 L 5,-17.5 L -5,-17.5 L -5,-19.5 Q -4.9,-23.3 0,-24 Z" fill="#c8102e" opacity=".92"/>' +
+        '<path d="M 0,24 Q 4.9,23.3 5,19.5 L 5,17.5 L -5,17.5 L -5,19.5 Q 4.9,23.3 0,24 Z" fill="#c8102e" opacity=".92"/>' +
+        '<path d="M -3.3,-21.6 Q 0,-23 3.3,-21.6 L 2.8,-19 L -2.8,-19 Z" fill="#000" opacity=".55"/>' +
+        '<path d="M -3.3,21.6 Q 0,23 3.3,21.6 L 2.8,19 L -2.8,19 Z" fill="#000" opacity=".55"/>' +
+        '<rect x="-5" y="-8.6" width="10" height="1.5" rx=".5" fill="#000" opacity=".42"/>' +
+        '<rect x="-5" y="7.1" width="10" height="1.5" rx=".5" fill="#000" opacity=".42"/>' +
+        '<rect x="-2.3" y="-15.2" width="4.6" height="4" rx="1" fill="#fff" opacity=".2"/>' +
+        '<rect x="-2.3" y="-2" width="4.6" height="4" rx="1" fill="#fff" opacity=".2"/>' +
+        '<rect x="-2.3" y="11.2" width="4.6" height="4" rx="1" fill="#fff" opacity=".2"/>' +
+        '<path d="M -3.6,2.8 L 3.6,4.6 M -3.6,4.6 L 3.6,2.8" stroke="#000" opacity=".45" stroke-width=".8"/>' +
+        '<rect x="4.15" y="-13.4" width=".85" height="3.4" rx=".3" fill="#fff" opacity=".38"/>' +
+        '<rect x="-5" y="-13.4" width=".85" height="3.4" rx=".3" fill="#fff" opacity=".38"/>' +
+        '<rect x="4.15" y="-4.6" width=".85" height="3.4" rx=".3" fill="#fff" opacity=".38"/>' +
+        '<rect x="-5" y="-4.6" width=".85" height="3.4" rx=".3" fill="#fff" opacity=".38"/>' +
+        '<rect x="4.15" y="10" width=".85" height="3.4" rx=".3" fill="#fff" opacity=".38"/>' +
+        '<rect x="-5" y="10" width=".85" height="3.4" rx=".3" fill="#fff" opacity=".38"/>',
       // funicular: symmetric box, cabs + windshields at BOTH ends, a haul-rope
       // line down the centre, and the stepped-floor divisions of a hillside car
       cable: c =>
@@ -1810,7 +1822,7 @@
     const BODY = {
       tram: 'M 0,-22 L 4.6,-17.5 L 5,-15 L 5,20 Q 5,22 2.8,22 L -2.8,22 Q -5,22 -5,20 L -5,-15 L -4.6,-17.5 Z',
       bus: 'M 0,-12 Q 4.6,-12 4.6,-8.6 L 4.6,9.6 Q 4.6,12 2.3,12 L -2.3,12 Q -4.6,12 -4.6,9.6 L -4.6,-8.6 Q -4.6,-12 0,-12 Z',
-      train: 'M 0,-24 L 4.8,-18.5 L 5,-16 L 5,22 Q 5,24 2.6,24 L -2.6,24 Q -5,24 -5,22 L -5,-16 L -4.8,-18.5 Z',
+      train: 'M 0,-24 Q 4.9,-23.3 5,-19.5 L 5,19.5 Q 4.9,23.3 0,24 Q -4.9,23.3 -5,19.5 L -5,-19.5 Q -4.9,-23.3 0,-24 Z',
       cable: 'M -5,-15 Q -5,-18 -2.4,-18 L 2.4,-18 Q 5,-18 5,-15 L 5,15 Q 5,18 2.4,18 L -2.4,18 Q -5,18 -5,15 Z'
     };
     // In the tilted view a raised roof projects toward the horizon; on a
