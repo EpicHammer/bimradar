@@ -1262,12 +1262,18 @@
               rg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
               lk.add(new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
             })();
-            const lkT = facet(new THREE.BoxGeometry(4.6, 21, 4.6), LKPALE, 0.72, 0.42);
-            lkT.position.set(-11.5, 10.5, 1); lk.add(lkT);
-            const lkSpire = facet(new THREE.ConeGeometry(3.3, 12, 8), LKSLATE, 0.55, 0.5);
-            lkSpire.position.set(-11.5, 27, 1); lk.add(lkSpire);
-            const lkFin = facet(new THREE.SphereGeometry(0.4, 8, 6), 0xcaa233, 1, 0.1);
-            lkFin.position.set(-11.5, 33.4, 1); lk.add(lkFin);
+            // Tower sized to OSM's real building:parts (609953544/-46, h26 +
+            // 5 m pyramidal roof). CARTO renders those parts under RECYCLED tile
+            // ids (id-hiding impossible — the same id belongs to an Annenstraße
+            // block!) and `within` fails as usual, so the model must ENCLOSE
+            // the 26 m extrusion instead: walls past 26, roof above.
+            const lkT = facet(new THREE.BoxGeometry(9.6, 26.5, 14), LKPALE, 0.72, 0.42);
+            lkT.position.set(-12, 13.25, 3.2); lk.add(lkT);
+            const lkSpire = facet(new THREE.ConeGeometry(6.9, 9, 4), LKSLATE, 0.55, 0.5);
+            lkSpire.rotation.y = Math.PI / 4;
+            lkSpire.position.set(-12, 31, 3.2); lk.add(lkSpire);
+            const lkFin = facet(new THREE.SphereGeometry(0.45, 8, 6), 0xcaa233, 1, 0.1);
+            lkFin.position.set(-12, 36, 3.2); lk.add(lkFin);
             const mcLk = maplibregl.MercatorCoordinate.fromLngLat([15.4467468, 47.0755519], 0);
             lk.position.set((mcLk.x - T.x) / T.scale, 0, (mcLk.y - T.y) / T.scale);
             scene.add(lk);
