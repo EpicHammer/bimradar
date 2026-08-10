@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>BimRadar — Elias Hammer</title>
   <meta name="description" content="Live map of Graz Bims, buses and trains — tracked in real time.">
 
@@ -14,6 +14,14 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="BimRadar">
   <link rel="apple-touch-icon" href="./icon-180.png?v=2">
+  <link rel="apple-touch-startup-image" href="./splash-1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+  <link rel="apple-touch-startup-image" href="./splash-1179x2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+  <link rel="apple-touch-startup-image" href="./splash-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+  <link rel="apple-touch-startup-image" href="./splash-1284x2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+  <link rel="apple-touch-startup-image" href="./splash-1125x2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+  <link rel="apple-touch-startup-image" href="./splash-1242x2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+  <link rel="apple-touch-startup-image" href="./splash-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+  <link rel="apple-touch-startup-image" href="./splash-750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
   <link rel="icon" href="./icon-32.png?v=2" sizes="32x32">
   <link rel="shortcut icon" href="./icon-32.png?v=2">
 
@@ -52,7 +60,10 @@
         --ok: #1baf7a;
       }
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    button, .vchip, .tbtn, .opt, .sugg div, .grabber { touch-action: manipulation; }
+    #mapstage, .vchip, .tbtn, .grabber, header, .chiprow {
+      -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
     html { -webkit-text-size-adjust: 100%; }
     html, body { max-width: 100%; overflow-x: hidden; }
     body { margin: 0; color: var(--fg); background: var(--bg); overflow: hidden;
@@ -82,6 +93,21 @@
     main::-webkit-scrollbar-track { background: transparent; }
     body.panel-hidden main { transform: translateX(-105%); }
     #panelshow { position: fixed; top: 14px; left: 14px; z-index: 6; display: none; }
+    .mapfabs { display: none; }
+    @media (max-width: 44rem) {
+      body.panel-peek .mapfabs, body.panel-hidden .mapfabs {
+        display: flex; flex-direction: column; gap: .55rem;
+        position: fixed; right: .85rem;
+        bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 6;
+      }
+      .mapfabs .tbtn { width: 44px; height: 44px;
+        box-shadow: inset 0 1px 0 var(--glasshi), 0 5px 18px rgba(0,0,0,.28); }
+      .mapfabs .tbtn svg { width: 19px; height: 19px; }
+    }
+    .medot { position: absolute; width: 0; height: 0; }
+    .medot i { position: absolute; left: -8px; top: -8px; width: 16px; height: 16px;
+      border-radius: 50%; background: #2b7de9; border: 2.5px solid #fff;
+      box-shadow: 0 0 10px rgba(43,125,233,.8); }
     body.panel-hidden #panelshow { display: grid; }
     @media (max-width: 44rem) {
       /* The map fills the viewport; the panel is a sheet ANCHORED TO THE VIEWPORT
@@ -102,6 +128,8 @@
       .fieldwrap input { min-width: 0; scroll-margin-top: 12px; }
       .opt, .opt .chain, #results { max-width: 100%; overflow-wrap: anywhere; }
       body.panel-hidden main { transform: translateY(110%); opacity: 0; pointer-events: none; }
+      body.panel-half main { transform: translateY(52%); }
+      main > header, main .chiprow { touch-action: none; }   /* these areas drag the sheet */
     }
 
     header { display: flex; align-items: center; justify-content: space-between; gap: .8rem; margin-bottom: .5rem; }
@@ -261,6 +289,7 @@
     .bm-pop .maplibregl-popup-tip { border-top-color: var(--card); border-bottom-color: var(--card);
       border-left-color: var(--card); border-right-color: var(--card); }
     .bm-pop .maplibregl-popup-close-button { color: var(--muted); font-size: 1.1rem; padding: 0 .35rem; }
+    .bm-pop .maplibregl-popup-close-button { width: 34px; height: 34px; font-size: 21px; line-height: 1; }
     .bm-pop .maplibregl-popup-close-button:hover { background: transparent; color: var(--fg); }
     /* DOM markers: zero-size anchor boxes whose children draw around the point */
     .veh, .stopm, .pinm { position: absolute; width: 0; height: 0; }
@@ -332,6 +361,8 @@
       body.panel-peek .peek { opacity: 1; }
       /* the fully-hidden mode stays available as an escape hatch */
       body.panel-hidden main { transform: translateY(110%); opacity: 0; pointer-events: none; }
+      body.panel-half main { transform: translateY(52%); }
+      main > header, main .chiprow { touch-action: none; }   /* these areas drag the sheet */
     }
   </style>
 </head>
@@ -340,6 +371,12 @@
   <button class="tbtn" id="panelshow" title="Show panel">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9.6 4v16"/></svg>
   </button>
+  <div class="mapfabs">
+    <button class="tbtn" id="fablocate" title="My location" aria-label="My location">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3"/></svg>
+    </button>
+    <button class="tbtn" id="fab3d" title="3D view" aria-pressed="false" style="font-size:.72rem;font-weight:700">3D</button>
+  </div>
   <main>
     <button class="grabber" id="grabber" title="Collapse panel" aria-label="Collapse panel">
       <span class="peek" id="peek"></span>
@@ -2056,11 +2093,13 @@
       if (pitched) ensureThree();          // lazy-load the modeled tower
       map.easeTo({ pitch: pitched ? 45 : 0, duration: 650 });
       $('btn3d').setAttribute('aria-pressed', String(pitched));
+      $('fab3d').setAttribute('aria-pressed', String(pitched));
     }
 
     function initMap() {
       map = new maplibregl.Map({
         container: 'map',
+        pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
         style: isDark() ? STYLE.dark : STYLE.light,
         center: [GRAZ.lng, GRAZ.lat], zoom: 13,
         attributionControl: { compact: true },
@@ -3560,14 +3599,20 @@
     // Collapsing leaves a 52px stub visible, so the gesture always has a home of
     // its own and never competes with the map's pan surface.
     const isMobile = () => window.matchMedia('(max-width: 44rem)').matches;
-    function setPeek(on) {
+    function setSheet(state) {              // 'full' | 'half' | 'peek'
       const c = map && map.getCenter();
-      document.body.classList.toggle('panel-peek', on);
       document.body.classList.remove('panel-hidden');
-      if (on) window.scrollTo(0, 0);
+      document.body.classList.toggle('panel-peek', state === 'peek');
+      document.body.classList.toggle('panel-half', state === 'half');
+      if (state !== 'full') window.scrollTo(0, 0);
       updatePeek();
       if (c) setTimeout(() => { if (map) map.setCenter(c); }, 320);
     }
+    function sheetState() {
+      return document.body.classList.contains('panel-peek') ? 'peek'
+           : document.body.classList.contains('panel-half') ? 'half' : 'full';
+    }
+    function setPeek(on) { setSheet(on ? 'peek' : 'full'); }
     function updatePeek() {
       const n = [...vehicles.values()].filter(v => filters[chipOf(v.kind)]).length;
       const where = trip.from || trip.to ? 'tap to finish planning' : 'tap to plan a trip';
@@ -3576,39 +3621,99 @@
 
     (() => {
       const grab = $('grabber'), sheet = document.querySelector('main');
-      let startY = 0, dy = 0, dragging = false, moved = false, wasPeek = false;
-      const THRESHOLD = 60;
-
-      grab.addEventListener('pointerdown', e => {
+      const ORDER = ['full', 'half', 'peek'];
+      let startY = 0, dy = 0, dragging = false, moved = false, fromState = 'full';
+      const BASE = {
+        full: '0px',
+        half: '52%',
+        peek: 'calc(100% - 58px - env(safe-area-inset-bottom, 0px))'
+      };
+      const start = e => {
         if (!isMobile()) return;
         dragging = true; moved = false; startY = e.clientY; dy = 0;
-        wasPeek = document.body.classList.contains('panel-peek');
+        fromState = sheetState();
         sheet.style.transition = 'none';
-        try { grab.setPointerCapture(e.pointerId); } catch (err) {}
-      });
-      grab.addEventListener('pointermove', e => {
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+      };
+      const move = e => {
         if (!dragging) return;
         dy = e.clientY - startY;
-        if (Math.abs(dy) > 4) moved = true;
-        // expanded: drag down only. peeking: drag up only.
-        const d = wasPeek ? Math.min(0, dy) : Math.max(0, dy);
-        const base = wasPeek ? 'calc(100% - 58px - env(safe-area-inset-bottom, 0px))' : '0px';
-        sheet.style.transform = 'translateY(' + base + ') translateY(' + (d * 0.9) + 'px)';
+        if (Math.abs(dy) > 6) moved = true;
+        if (!moved) return;
+        const d = fromState === 'peek' ? Math.min(0, dy)
+                : fromState === 'full' ? Math.max(0, dy) : dy;
+        sheet.style.transform = 'translateY(' + BASE[fromState] + ') translateY(' + (d * 0.9) + 'px)';
         e.preventDefault();
-      });
+      };
       const finish = e => {
         if (!dragging) return;
         dragging = false;
         sheet.style.transition = '';
         sheet.style.transform = '';
-        if (!moved) setPeek(!wasPeek);                    // plain tap toggles
-        else if (wasPeek && dy < -THRESHOLD) setPeek(false);   // dragged up -> expand
-        else if (!wasPeek && dy > THRESHOLD) setPeek(true);    // dragged down -> peek
-        try { grab.releasePointerCapture(e.pointerId); } catch (err) {}
+        const idx = ORDER.indexOf(fromState);
+        if (!moved) {
+          if (e.currentTarget === grab) setSheet(fromState === 'peek' ? 'full' : 'peek');
+        } else if (Math.abs(dy) > 55) {
+          const steps = Math.abs(dy) > 230 ? 2 : 1;
+          const to = ORDER[Math.max(0, Math.min(2, idx + (dy > 0 ? steps : -steps)))];
+          setSheet(to);
+          // a drag mustn't fire the click of whatever chip/button it started on
+          document.addEventListener('click', ev => { ev.stopPropagation(); ev.preventDefault(); },
+            { capture: true, once: true });
+        }
+        try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) {}
       };
-      grab.addEventListener('pointerup', finish);
-      grab.addEventListener('pointercancel', finish);
+      // drag targets: the handle plus the sheet's non-scrolling chrome — the
+      // results list keeps native scrolling untouched
+      const chrome = [grab, sheet.querySelector('header'), sheet.querySelector('.chiprow')].filter(Boolean);
+      for (const t of chrome) {
+        t.addEventListener('pointerdown', start);
+        t.addEventListener('pointermove', move);
+        t.addEventListener('pointerup', finish);
+        t.addEventListener('pointercancel', finish);
+      }
     })();
+    // floating map buttons (phone): 3D mirrors the sheet's toggle; locate-me
+    // drops a blue dot at the GPS fix and flies there.
+    $('fab3d').addEventListener('click', () => $('btn3d').click());
+    let meMarker = null;
+    $('fablocate').addEventListener('click', () => {
+      if (!navigator.geolocation || !map) return;
+      navigator.geolocation.getCurrentPosition(pos => {
+        const ll = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        if (!meMarker) {
+          const el2 = document.createElement('div');
+          el2.className = 'medot'; el2.innerHTML = '<i></i>';
+          meMarker = new Mk({ map, position: ll, element: el2, zIndex: 80 });
+        } else { meMarker.setPosition(ll); meMarker.setMap(map); }
+        map.flyTo({ center: [ll.lng, ll.lat], zoom: Math.max(map.getZoom(), 15.8), duration: 900 });
+      }, () => {}, { enableHighAccuracy: true, timeout: 8000 });
+    });
+
+    // iOS: the keyboard overlays the fixed sheet without resizing the layout —
+    // lift the sheet by the keyboard height so field + suggestions stay visible.
+    if (window.visualViewport) {
+      const vv = window.visualViewport;
+      const sheetEl = document.querySelector('main');
+      const kbAdjust = () => {
+        if (!isMobile()) { sheetEl.style.bottom = ''; sheetEl.style.maxHeight = ''; return; }
+        const focused = document.activeElement && document.activeElement.closest &&
+                        document.activeElement.closest('.fieldwrap');
+        const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+        if (focused && kb > 60) {
+          sheetEl.style.bottom = kb + 'px';
+          sheetEl.style.maxHeight = 'calc(100dvh - ' + (kb + 12) + 'px)';
+        } else {
+          sheetEl.style.bottom = '';
+          sheetEl.style.maxHeight = '';
+        }
+      };
+      vv.addEventListener('resize', kbAdjust);
+      vv.addEventListener('scroll', kbAdjust);
+      document.addEventListener('focusin', () => setTimeout(kbAdjust, 60));
+      document.addEventListener('focusout', () => setTimeout(kbAdjust, 60));
+    }
+
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) { clearInterval(pollTimer); pollTimer = null; }
       else if (map && !pollTimer) { poll(); pollTimer = setInterval(poll, 7000); }
