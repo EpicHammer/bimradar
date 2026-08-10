@@ -3584,8 +3584,16 @@
     });
 
     // ---------- panel + boot ----------
+    // Collapsing the sheet must dismiss the keyboard too: iOS keeps the input
+    // focused (keyboard up) even as the sheet slides away underneath it.
+    function dismissKeyboard() {
+      const a = document.activeElement;
+      if (a && a.blur && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) a.blur();
+      $('sugg-from').hidden = true; $('sugg-to').hidden = true;
+    }
     function togglePanel(hide) {
       const c = map && map.getCenter();
+      if (hide) dismissKeyboard();
       document.body.classList.toggle('panel-hidden', hide);
       if (hide) window.scrollTo(0, 0);
       // the map container changes size — recentre once the transition has settled
@@ -3601,6 +3609,7 @@
     const isMobile = () => window.matchMedia('(max-width: 44rem)').matches;
     function setSheet(state) {              // 'full' | 'half' | 'peek'
       const c = map && map.getCenter();
+      if (state !== 'full') dismissKeyboard();
       document.body.classList.remove('panel-hidden');
       document.body.classList.toggle('panel-peek', state === 'peek');
       document.body.classList.toggle('panel-half', state === 'half');
@@ -3632,6 +3641,7 @@
         if (!isMobile()) return;
         dragging = true; moved = false; startY = e.clientY; dy = 0;
         fromState = sheetState();
+        if (fromState === 'full') dismissKeyboard();
         sheet.style.transition = 'none';
         try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
       };
