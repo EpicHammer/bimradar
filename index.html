@@ -95,7 +95,7 @@
     #panelshow { position: fixed; top: 14px; left: 14px; z-index: 6; display: none; }
     .mapfabs { display: none; }
     @media (max-width: 44rem) {
-      body.panel-peek .mapfabs, body.panel-hidden .mapfabs {
+      body.panel-peek .mapfabs, body.panel-hidden .mapfabs, body.panel-half .mapfabs {
         display: flex; flex-direction: column; gap: .55rem;
         position: fixed; right: .85rem;
         bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 6;
@@ -132,7 +132,6 @@
       /* On phones the 3D control lives on the map — one button, not two.
          The theme toggle stays in the sheet. */
       .chiprow #btn3d { display: none; }
-      body.panel-half .mapfabs { display: flex; }
       /* in half-height the sheet covers the lower ~38dvh — keep the fabs clear of it */
       body.panel-half .mapfabs { bottom: calc(40dvh + 16px); }
       main > header, main .chiprow { touch-action: none; }   /* these areas drag the sheet */
@@ -371,7 +370,6 @@
       /* On phones the 3D control lives on the map — one button, not two.
          The theme toggle stays in the sheet. */
       .chiprow #btn3d { display: none; }
-      body.panel-half .mapfabs { display: flex; }
       /* in half-height the sheet covers the lower ~38dvh — keep the fabs clear of it */
       body.panel-half .mapfabs { bottom: calc(40dvh + 16px); }
       main > header, main .chiprow { touch-action: none; }   /* these areas drag the sheet */
