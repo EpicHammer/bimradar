@@ -129,6 +129,12 @@
       .opt, .opt .chain, #results { max-width: 100%; overflow-wrap: anywhere; }
       body.panel-hidden main { transform: translateY(110%); opacity: 0; pointer-events: none; }
       body.panel-half main { transform: translateY(52%); }
+      /* On phones the 3D control lives on the map — one button, not two.
+         The theme toggle stays in the sheet. */
+      .chiprow #btn3d { display: none; }
+      body.panel-half .mapfabs { display: flex; }
+      /* in half-height the sheet covers the lower ~38dvh — keep the fabs clear of it */
+      body.panel-half .mapfabs { bottom: calc(40dvh + 16px); }
       main > header, main .chiprow { touch-action: none; }   /* these areas drag the sheet */
     }
 
@@ -362,6 +368,12 @@
       /* the fully-hidden mode stays available as an escape hatch */
       body.panel-hidden main { transform: translateY(110%); opacity: 0; pointer-events: none; }
       body.panel-half main { transform: translateY(52%); }
+      /* On phones the 3D control lives on the map — one button, not two.
+         The theme toggle stays in the sheet. */
+      .chiprow #btn3d { display: none; }
+      body.panel-half .mapfabs { display: flex; }
+      /* in half-height the sheet covers the lower ~38dvh — keep the fabs clear of it */
+      body.panel-half .mapfabs { bottom: calc(40dvh + 16px); }
       main > header, main .chiprow { touch-action: none; }   /* these areas drag the sheet */
     }
   </style>
