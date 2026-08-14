@@ -3705,6 +3705,9 @@
         t.addEventListener('pointermove', move);
         t.addEventListener('pointerup', finish);
         t.addEventListener('pointercancel', finish);
+        // if the gesture is taken away (system swipe, call, pointer leaves the
+        // window) the sheet must still settle instead of freezing mid-drag
+        t.addEventListener('lostpointercapture', finish);
       }
     })();
     // floating map buttons (phone): 3D mirrors the sheet's toggle; locate-me
