@@ -3457,7 +3457,7 @@
       '<circle cx="13.2" cy="4.3" r="1.9" fill="currentColor" stroke="none"/>' +
       '<path d="M13 7.5l-1.8 5 2.8 2.7.8 4.6M11.2 12.5l-2.6 1.8-.9 3.9M13 7.5l2.8 1.8 2 2.6"/></svg>';
     try { const s = localStorage.getItem('bm_theme'); if (s) document.documentElement.dataset.theme = s; } catch (e) {}
-    $('themebtn').innerHTML = isDark() ? ICON_SUN : ICON_MOON;
+    $('themebtn').innerHTML = $('fabtheme').innerHTML = isDark() ? ICON_SUN : ICON_MOON;
     $('btn3d').addEventListener('click', () => {
       pitched = !pitched;
       try { localStorage.setItem('bm_3d', pitched ? '1' : '0'); } catch (e) {}
@@ -3467,7 +3467,7 @@
       const next = isDark() ? 'light' : 'dark';
       document.documentElement.dataset.theme = next;
       try { localStorage.setItem('bm_theme', next); } catch (e) {}
-      $('themebtn').innerHTML = next === 'dark' ? ICON_SUN : ICON_MOON;
+      $('themebtn').innerHTML = $('fabtheme').innerHTML = next === 'dark' ? ICON_SUN : ICON_MOON;
       setTheme();
     });
 
@@ -3590,6 +3590,7 @@
     // floating map buttons (phone): 3D mirrors the sheet's toggle; locate-me
     // drops a blue dot at the GPS fix and flies there.
     $('fab3d').addEventListener('click', () => $('btn3d').click());
+    $('fabtheme').addEventListener('click', () => $('themebtn').click());
     let meMarker = null;
     $('fablocate').addEventListener('click', () => {
       if (!navigator.geolocation || !map) return;
