@@ -377,6 +377,10 @@
         opacity: 1; pointer-events: auto;
       }
       body.panel-peek .peek { opacity: 1; }
+      /* collapsed = handle + summary ONLY. The stub is lifted above the home
+         indicator (safe-area), and without this the sheet's first row peeks
+         out half-cut underneath it. */
+      body.panel-peek main > :not(#grabber) { visibility: hidden; }
       /* the fully-hidden mode stays available as an escape hatch */
       body.panel-hidden main { transform: translateY(110%); opacity: 0; pointer-events: none; }
       body.panel-half main { transform: translateY(52%); }
