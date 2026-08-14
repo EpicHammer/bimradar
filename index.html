@@ -95,11 +95,17 @@
     body.panel-hidden main { transform: translateX(-105%); }
     #panelshow { position: fixed; top: 14px; left: 14px; z-index: 6; display: none; }
     .mapfabs { display: none; }
-    @media (max-width: 44rem) {
-      body.panel-peek .mapfabs, body.panel-hidden .mapfabs, body.panel-half .mapfabs {
+    @media (max-width: 44rem), (pointer: coarse) and (max-width: 62rem) and (max-height: 30rem) {
+      .mapfabs {
         display: flex; flex-direction: column; gap: .55rem;
         position: fixed; right: .85rem;
         bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 6;
+      }
+      /* sheet expanded: only the top map strip is visible — controls move up
+         with it instead of vanishing under the sheet */
+      body:not(.panel-peek):not(.panel-half):not(.panel-hidden) .mapfabs {
+        bottom: auto; top: calc(12px + env(safe-area-inset-top, 0px));
+        flex-direction: row;
       }
       .mapfabs .tbtn { width: 44px; height: 44px;
         box-shadow: inset 0 1px 0 var(--glasshi), 0 5px 18px rgba(0,0,0,.28); }
@@ -110,7 +116,7 @@
       border-radius: 50%; background: #2b7de9; border: 2.5px solid #fff;
       box-shadow: 0 0 10px rgba(43,125,233,.8); }
     body.panel-hidden #panelshow { display: grid; }
-    @media (max-width: 44rem) {
+    @media (max-width: 44rem), (pointer: coarse) and (max-width: 62rem) and (max-height: 30rem) {
       /* The map fills the viewport; the panel is a sheet ANCHORED TO THE VIEWPORT
          (position: fixed, bottom: 0). Keeping it in document flow was what left a
          black gap and let the stub slide under Safari's toolbar. */
@@ -170,7 +176,7 @@
     #cardpane { display: none; }
     body.card-mode #cardpane { display: block; }
     body.card-mode .tripform, body.card-mode #results, body.card-mode #livetxt,
-    body.card-mode #triperr, body.card-mode #err { display: none; }
+    body.card-mode #triperr, body.card-mode #err, body.card-mode #favrow { display: none; }
     .cardback { display: inline-flex; align-items: center; gap: .25rem; border: 0;
       background: transparent; color: var(--accent); font: inherit; font-size: .92rem;
       font-weight: 650; padding: 0 .3rem .55rem 0; cursor: pointer; }
@@ -308,7 +314,7 @@
 
     /* mobile: the panel is a bottom sheet that slides DOWN, so the chevron points down.
        This must come after the base rule above — equal specificity, last one wins. */
-    @media (max-width: 44rem) {
+    @media (max-width: 44rem), (pointer: coarse) and (max-width: 62rem) and (max-height: 30rem) {
       /* a bottom sheet collapses with a grab handle, not a chevron */
       #panelhide { display: none; }
       .grabber {
@@ -347,7 +353,64 @@
       /* in half-height the sheet covers the lower ~38dvh — keep the fabs clear of it */
       body.panel-half .mapfabs { bottom: calc(40dvh + 16px); }
       main > header { touch-action: none; }   /* this area drags the sheet */
+
+      /* bigger touch targets on coarse pointers (44px floor) */
+      .grabber { height: 32px; }
+      body.panel-peek .grabber { height: 50px; }
+      .peek { top: 24px; }
+      .mini { width: 38px; height: 38px; }
+      .fieldwrap input { padding-right: 5.4rem; }
+      .sugg div { padding: .62rem .75rem; min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; }
+      .cardback { min-height: 44px; touch-action: none; }   /* also a sheet drag handle */
     }
+
+    /* status toast: feed + location problems must be visible over the MAP,
+       not buried in a collapsed sheet */
+    .toast { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px));
+      left: 50%; transform: translateX(-50%); z-index: 8; max-width: min(92vw, 30rem);
+      background: var(--card); color: var(--fg); border: 1px solid var(--line);
+      border-radius: 999px; padding: .45rem 1rem; font-size: .82rem;
+      box-shadow: inset 0 1px 0 var(--glasshi), 0 8px 26px rgba(0,0,0,.32);
+      pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      transition: opacity .25s ease; }
+    .toast[hidden] { display: block; opacity: 0; visibility: hidden; }
+
+    /* persistent "following a vehicle" pill — the exit is always on screen */
+    .followpill { position: fixed; left: 50%; transform: translateX(-50%);
+      bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 6;
+      display: inline-flex; align-items: center; gap: .45rem; min-height: 40px;
+      border: 1px solid var(--line); border-radius: 999px; cursor: pointer;
+      background: color-mix(in srgb, var(--card) 84%, transparent);
+      backdrop-filter: blur(12px) saturate(1.5); -webkit-backdrop-filter: blur(12px) saturate(1.5);
+      box-shadow: inset 0 1px 0 var(--glasshi), 0 5px 18px rgba(0,0,0,.28);
+      color: var(--fg); font: inherit; font-size: .84rem; font-weight: 650; padding: .3rem .95rem; }
+    .followpill .x { color: var(--muted); font-size: 1rem; line-height: 1; }
+    body.panel-half .followpill { bottom: calc(40dvh + 16px); }
+
+    /* favourite stops: one-tap departure boards */
+    #favrow { display: flex; gap: .4rem; flex-wrap: wrap; margin: .1rem 0 .55rem; }
+    #favrow[hidden] { display: none; }
+    .favchip { display: inline-flex; align-items: center; gap: .35rem; min-height: 38px;
+      border: 1px solid var(--line); border-radius: 999px; cursor: pointer;
+      background: color-mix(in srgb, var(--card) 80%, transparent); color: var(--fg);
+      font: inherit; font-size: .8rem; font-weight: 600; padding: .25rem .8rem;
+      transition: border-color .15s ease; max-width: 100%; }
+    .favchip:hover { border-color: var(--accent); }
+    .favchip .st { color: #e8b13c; }
+    .favbtn { display: inline-flex; align-items: center; gap: .3rem; margin: .5rem 0 0 .5rem;
+      border: 1px solid var(--line); border-radius: 999px; background: transparent;
+      color: var(--fg); font: inherit; font-size: .8rem; font-weight: 600;
+      padding: .28rem .75rem; cursor: pointer; min-height: 36px; }
+    .favbtn[aria-pressed="true"] { border-color: #e8b13c; color: #e8b13c; }
+
+    /* locate FAB: pulse while waiting for the first GPS fix */
+    @keyframes fabwait { 50% { opacity: .35; } }
+    .tbtn.busy svg { animation: fabwait 1s ease-in-out infinite; }
+
+    /* dragging the sheet: blur is the jankiest thing on mid-range phones —
+       swap it for a more opaque plain surface only while the finger is down */
+    body.sheet-dragging main { backdrop-filter: none; -webkit-backdrop-filter: none;
+      background: color-mix(in srgb, var(--card) 96%, transparent); }
   </style>
 </head>
 <body>
@@ -359,14 +422,16 @@
     <button class="tbtn" id="fablocate" title="My location" aria-label="My location">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3"/></svg>
     </button>
-    <button class="tbtn" id="fab3d" title="3D view" aria-pressed="false" style="font-size:.72rem;font-weight:700">3D</button>
-    <button class="tbtn" id="fabcompass" title="Point north" hidden>
-      <svg viewBox="0 0 24 24" style="width:20px;height:20px"><path d="M12 3l3.4 9H8.6z" fill="#d63b30"/><path d="M12 21l-3.4-9h6.8z" fill="currentColor" opacity=".75"/></svg>
+    <button class="tbtn" id="fab3d" title="3D view" aria-label="3D view" aria-pressed="false" style="font-size:.72rem;font-weight:700">3D</button>
+    <button class="tbtn" id="fabtheme" title="Light/dark" aria-label="Switch light/dark theme"></button>
+    <button class="tbtn" id="fabshare" title="Share this view" aria-label="Share this view">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="2.6"/><circle cx="17.5" cy="5.5" r="2.6"/><circle cx="17.5" cy="18.5" r="2.6"/><path d="M8.4 10.7l6.8-3.9M8.4 13.3l6.8 3.9"/></svg>
     </button>
-    <button class="tbtn" id="fabtheme" title="Light/dark"></button>
   </div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <button class="followpill" id="followpill" hidden></button>
   <main>
-    <button class="grabber" id="grabber" title="Collapse panel" aria-label="Collapse panel">
+    <button class="grabber" id="grabber" title="Panel" aria-label="Panel" aria-expanded="true">
       <span class="peek" id="peek"></span>
     </button>
     <header>
@@ -389,18 +454,20 @@
 
     </header>
 
-    <section id="cardpane">
+    <section id="cardpane" role="dialog" aria-label="Details">
       <button class="cardback" id="cardback">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Map
       </button>
       <div id="cardbody"></div>
     </section>
 
-    <p class="err" id="err" hidden></p>
+    <p class="err" id="err" aria-live="polite" hidden></p>
 
+    <div id="favrow" hidden></div>
     <div class="tripform">
       <div class="fieldwrap">
-        <input id="from" type="text" placeholder="From — stop, address…" autocomplete="off">
+        <input id="from" type="text" placeholder="From — stop, address…" autocomplete="off"
+          role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="sugg-from">
         <span class="minis">
           <button class="mini" id="pick-from" title="Pick on the map (no typing)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.2-5.4-6.2-10.2a6.2 6.2 0 1 1 12.4 0C18.2 15.6 12 21 12 21z"/><circle cx="12" cy="10.6" r="2.1"/></svg>
@@ -409,10 +476,11 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3"/></svg>
           </button>
         </span>
-        <div class="sugg" id="sugg-from" hidden></div>
+        <div class="sugg" id="sugg-from" role="listbox" hidden></div>
       </div>
       <div class="fieldwrap">
-        <input id="to" type="text" placeholder="To — where are you going?" autocomplete="off">
+        <input id="to" type="text" placeholder="To — where are you going?" autocomplete="off"
+          role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="sugg-to">
         <span class="minis">
           <button class="mini" id="pick-to" title="Pick on the map (no typing)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.2-5.4-6.2-10.2a6.2 6.2 0 1 1 12.4 0C18.2 15.6 12 21 12 21z"/><circle cx="12" cy="10.6" r="2.1"/></svg>
@@ -421,7 +489,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 20V7M8 7L5 10M8 7l3 3M16 4v13m0 0l-3-3m3 3l3-3"/></svg>
           </button>
         </span>
-        <div class="sugg" id="sugg-to" hidden></div>
+        <div class="sugg" id="sugg-to" role="listbox" hidden></div>
       </div>
         <p class="pickhint" id="pickhint" hidden></p>
       <div class="gorow">
@@ -431,9 +499,9 @@
         </button>
       </div>
     </div>
-    <p class="err" id="triperr" hidden></p>
+    <p class="err" id="triperr" aria-live="polite" hidden></p>
     <div id="results"></div>
-    <p class="note" id="livetxt">connecting…</p>
+    <p class="note" id="livetxt" aria-live="polite">connecting…</p>
 
   </main>
 
@@ -525,11 +593,14 @@
     const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
     // ---------- state ----------
-    let map = null, gLoading = false, info = null;
+    let map = null, info = null;
     // canonical line names (termini) from the official Verbund Steiermark GTFS feed
     let LINES = {};
     fetch('./lines.json').then(r => r.ok ? r.json() : {}).then(d => { LINES = d; }).catch(() => {});
-    const MOBILE_MQ = window.matchMedia('(max-width: 44rem)');
+    // "mobile" = narrow, OR a touch device in landscape — a rotated phone must
+    // keep the sheet UI instead of falling back to the desktop sidebar
+    const MOBILE_MQ = window.matchMedia('(max-width: 44rem), (pointer: coarse) and (max-width: 62rem) and (max-height: 30rem)');
+    const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let followJid = null;         // camera chases this vehicle while set
     const vehicles = new Map();   // jid -> {marker, kind, line, dir, from, to, t0, dur, head}
     const LMK_OCC = [];           // landmark occluders, filled once by the 3D layer's onAdd
@@ -607,14 +678,17 @@
     // On phones a tapped thing takes over the SHEET (native pattern); the
     // floating popup stays for desktop. The camera nudges so the tapped point
     // remains visible above the half-height sheet.
+    let cardReturnFocus = null;
     function presentCard(node, pos) {
       if (MOBILE_MQ.matches) {
         info.close();
+        cardReturnFocus = document.activeElement;
         document.getElementById('cardbody').replaceChildren(node);
         document.body.classList.add('card-mode');
         setSheet('half');
+        $('cardback').focus({ preventScroll: true });   // screen readers land in the card
         if (map && pos) map.easeTo({ center: [pos.lng, pos.lat],
-          offset: [0, -Math.round(window.innerHeight * 0.16)], duration: 380 });
+          offset: [0, -Math.round(window.innerHeight * 0.16)], duration: REDUCED ? 0 : 380 });
       } else {
         info.setContent(node);
         info.open({ lngLat: pos });
@@ -625,7 +699,15 @@
       document.body.classList.remove('card-mode');
       document.getElementById('cardbody').replaceChildren();
       clearRoute();
+      // restore focus, but never onto an input — that would pop the keyboard
+      if (cardReturnFocus && cardReturnFocus.tagName === 'BUTTON' && document.contains(cardReturnFocus)) {
+        try { cardReturnFocus.focus({ preventScroll: true }); } catch (e) {}
+      }
+      cardReturnFocus = null;
     }
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && document.body.classList.contains('card-mode')) closeCard();
+    });
 
     // GeoJSON line layers stand in for google.maps.Polyline (route + trip overlays)
     function setLine(id, pts, paint) {
@@ -765,7 +847,7 @@
       if (threeLayerFactory || threeLoading) return;
       threeLoading = true;
       let THREE;
-      try { THREE = await import('./three.module.js?v=0.170.0'); }
+      try { THREE = await import('./three.module.js?v=0.170.0-min'); }
       catch (e) { threeLoading = false; return; }   // stays on the blocky tower
       // Let three keep its default managed round-trip (decode sRGB->linear on
       // input, re-encode linear->sRGB on output, in-shader). Net identity, so
@@ -2098,22 +2180,11 @@
         map.setLayoutProperty('uhrturm', 'visibility', (pitched && !modeled) ? 'visible' : 'none');
       updateOcclusion();   // re-evaluate ghosting when 3D toggles on/off
     }
-    function syncRotation() {
-      if (!map) return;
-      if (pitched) {
-        if (map.touchZoomRotate) map.touchZoomRotate.enableRotation();
-        if (map.dragRotate) map.dragRotate.enable();
-      } else {
-        if (map.touchZoomRotate) map.touchZoomRotate.disableRotation();
-        if (map.dragRotate) map.dragRotate.disable();
-        map.easeTo({ bearing: 0, duration: 400 });
-      }
-    }
     function apply3D() {
       if (!map) return;
       refresh3D();
       if (pitched) ensureThree();          // lazy-load the modeled tower
-      map.easeTo({ pitch: pitched ? 45 : 0, duration: 650 });
+      map.easeTo({ pitch: pitched ? 45 : 0, duration: REDUCED ? 0 : 650 });
       $('btn3d').setAttribute('aria-pressed', String(pitched));
       $('fab3d').setAttribute('aria-pressed', String(pitched));
     }
@@ -2136,26 +2207,26 @@
         attributionControl: { compact: true },
         dragRotate: false, pitchWithRotate: false, maxPitch: 45
       });
+      // rotation is off for good — the top-down vehicle art only reads north-up
       if (map.touchZoomRotate) map.touchZoomRotate.disableRotation();
-      map.on('rotate', () => {
-        const brg = map.getBearing();
-        $('fabcompass').hidden = Math.abs(brg) < 1;
-        const sv = $('fabcompass').querySelector('svg');
-        if (sv) sv.style.transform = 'rotate(' + (-brg) + 'deg)';
-      });
+      if (map.keyboard && map.keyboard.disableRotation) map.keyboard.disableRotation();
       window.__map = map;                        // debug/testing hook
       map.on('error', () => {});                 // tile/style hiccups shouldn't reach the UI
       info = makeInfo();
       map.on('dragstart', () => { meSetFollow(false); setFollowVehicle(null); });
       map.on('load', () => {
-        map.on('moveend', () => {
+        // a flick-pan burst fires several moveends — one settle, one poll (and
+        // one synchronous localStorage write), not five
+        const onSettle = debounce(() => {
+          if (!map) return;
           poll(); loadStops(); updateOcclusion();
           try {
             const c2 = map.getCenter();
             localStorage.setItem('bm_cam', JSON.stringify(
               { lat: +c2.lat.toFixed(5), lng: +c2.lng.toFixed(5), z: +map.getZoom().toFixed(2) }));
           } catch (e) {}
-        });
+        }, 300);
+        map.on('moveend', onSettle);
         // (no zoomend resize: the animate loop glides marker scale with the zoom)
         map.on('click', e => {
           if (armed && e.lngLat) { pickPoint(armed, e.lngLat); return; }
@@ -2168,6 +2239,7 @@
         poll(); loadStops();
         if (!pollTimer) pollTimer = setInterval(poll, 7000);
         requestAnimationFrame(animate);
+        handleShortcut();
       });
     }
 
@@ -2433,13 +2505,27 @@
         updateClearBtn();
         return;
       }
+      const p = m.getPosition();
+      openStopData({ lid: m.__lid, name: m.__name, lat: p.lat, lng: p.lng });
+    }
+    // the same departure card, openable without a marker (favourite chips,
+    // the ?nearby shortcut)
+    async function openStopData(f) {
       const box = document.createElement('div');
       box.className = 'iw';
-      const h = document.createElement('b'); h.textContent = m.__name;
-      box.append(h, document.createTextNode('Loading departures…'));
-      presentCard(box, m.getPosition());
+      const h = document.createElement('b'); h.textContent = f.name;
+      const star = document.createElement('button');
+      star.className = 'favbtn';
+      const setStar = on => {
+        star.setAttribute('aria-pressed', String(on));
+        star.textContent = on ? '★ Favourite' : '☆ Save stop';
+      };
+      setStar(favIdx(f.lid) >= 0);
+      star.addEventListener('click', () => setStar(toggleFav(f)));
+      box.append(h, star, document.createTextNode('Loading departures…'));
+      presentCard(box, { lat: f.lat, lng: f.lng });
       try {
-        const res = await hafas('StationBoard', { type: 'DEP', stbLoc: { lid: m.__lid }, maxJny: 8 });
+        const res = await hafas('StationBoard', { type: 'DEP', stbLoc: { lid: f.lid }, maxJny: 8 });
         const prodL = (res.common && res.common.prodL) || [];
         const rows = document.createElement('div'); rows.className = 'stops';
         for (const j of (res.jnyL || [])) {
@@ -2456,10 +2542,60 @@
           row.append(tm, ln, document.createTextNode(j.dirTxt || ''));
           rows.appendChild(row);
         }
-        box.replaceChildren(h, rows.children.length ? rows : document.createTextNode('No departures right now.'));
+        box.replaceChildren(h, star, rows.children.length ? rows : document.createTextNode('No departures right now.'));
       } catch (e) {
-        box.replaceChildren(h, document.createTextNode('Departures unavailable.'));
+        box.replaceChildren(h, star, document.createTextNode('Departures unavailable.'));
       }
+    }
+
+    // ---------- favourite stops ----------
+    let FAVS = [];
+    try { FAVS = JSON.parse(localStorage.getItem('bm_favs') || '[]'); } catch (e) {}
+    const saveFavs = () => { try { localStorage.setItem('bm_favs', JSON.stringify(FAVS)); } catch (e) {} };
+    const favIdx = lid => FAVS.findIndex(f => f.lid === lid);
+    function toggleFav(f) {
+      const i = favIdx(f.lid);
+      if (i >= 0) FAVS.splice(i, 1);
+      else FAVS.push({ lid: f.lid, name: f.name, lat: f.lat, lng: f.lng });
+      saveFavs(); renderFavs(); updatePeek();
+      return favIdx(f.lid) >= 0;
+    }
+    function renderFavs() {
+      const row = $('favrow');
+      row.replaceChildren();
+      for (const f of FAVS.slice(0, 6)) {
+        const b = document.createElement('button');
+        b.className = 'favchip';
+        const st = document.createElement('span');
+        st.className = 'st'; st.setAttribute('aria-hidden', 'true'); st.textContent = '★';
+        b.append(st, document.createTextNode(f.name));
+        b.addEventListener('click', () => {
+          if (map) map.flyTo({ center: [f.lng, f.lat], zoom: Math.max(map.getZoom(), 15.5), duration: REDUCED ? 0 : 700 });
+          openStopData(f);
+        });
+        row.appendChild(b);
+      }
+      row.hidden = !FAVS.length;
+      favDep.t = 0;                  // favourites changed — refetch the peek line
+    }
+    // next departure at the first favourite, folded into the peek line (60 s cache)
+    const favDep = { t: 0, txt: '', busy: false };
+    async function refreshFavDep() {
+      if (favDep.busy || !FAVS.length || Date.now() - favDep.t < 60000) return;
+      favDep.busy = true;
+      try {
+        const f = FAVS[0];
+        const res = await hafas('StationBoard', { type: 'DEP', stbLoc: { lid: f.lid }, maxJny: 4 });
+        const prodL = (res.common && res.common.prodL) || [];
+        const j = (res.jnyL || [])[0];
+        if (j) {
+          const st = j.stbStop || {};
+          const t = hafasTime(st.dTimeR || st.dTimeS);
+          favDep.txt = '★ ' + f.name + ': ' + lineName(prodL[j.prodX] || {}) + (t ? ' ' + t : '');
+        } else favDep.txt = '';
+        favDep.t = Date.now();
+      } catch (e) { favDep.t = Date.now(); }
+      finally { favDep.busy = false; updatePeekText(); }
     }
 
     // ---------- polling ----------
@@ -2614,7 +2750,7 @@
           // glide along it instead of the straight chord, which cuts corners
           // through building blocks. Without pth the chord is the fallback.
           v.route = buildGlidePath(cur, j.pth, to);
-          v.from = cur; v.to = to; v.t0 = now; v.dur = 7000;
+          v.from = cur; v.to = to; v.t0 = now; v.dur = REDUCED ? 0 : 7000;
           v.kind = kind; v.line = line; v.dir = dir; Object.assign(v, meta);
           v.marker.setIcon(vIcon(v.kind, v.head, v.line));
         }
@@ -2762,8 +2898,10 @@
       const lb = el.querySelector('.vlabel');
       if (lb) lb.style.top = (vehHalf(v.kind, isDetail) * S + 6) + 'px';
     }
-    let lastScaleZoom = -1, lastPitch = -1;
+    let lastScaleZoom = -1, lastPitch = -1, rafOn = false, frameNo = 0;
     function animate() {
+      if (document.hidden) { rafOn = false; return; }   // visibilitychange restarts the loop
+      rafOn = true; frameNo++;
       const now = Date.now();
       // while the zoom or the 3D tilt is animating, glide every marker with it
       const z = map ? map.getZoom() : -1;
@@ -2780,22 +2918,32 @@
           }
         }
       }
+      const vb = map ? map.getBounds() : null;
       for (const v of vehicles.values()) {
         if (v.marker.getMap()) {
-          v.marker.setPosition(curPos(v, now));
+          const p = curPos(v, now);
+          // offscreen vehicles get no per-frame work; clearing the cache makes
+          // the first visible frame re-place the marker after a pan-back
+          if (vb && !vb.contains(p)) { v._lp = null; continue; }
+          // settled glides don't move — skip the marker transform entirely
+          if (v._lp && v._lp.lat === p.lat && v._lp.lng === p.lng) continue;
+          v._lp = p;
+          v.marker.setPosition(p);
           // always face the direction of travel: chase the target heading along
           // the shortest arc, ~15%/frame — reads as a vehicle steering, not snapping
           if (v.targetHead != null) {
             const d = ((v.targetHead - v.head + 540) % 360) - 180;
             if (Math.abs(d) > 0.3) {
-              v.head = (v.head + d * 0.15 + 360) % 360;
+              v.head = REDUCED ? v.targetHead : (v.head + d * 0.15 + 360) % 360;
               updateVehTransform(v);
             }
           }
         }
       }
-      // chase cam: glue the centre to the followed vehicle's glide
-      if (followJid) {
+      // chase cam: glue the centre to the followed vehicle's glide. Every 2nd
+      // frame — each jumpTo is a full GL re-render; a 30 fps chase looks the
+      // same and halves the GPU cost of following.
+      if (followJid && (frameNo & 1) === 0) {
         const fv = vehicles.get(followJid);
         if (fv && fv.marker.getMap()) {
           const p2 = fv.marker.getPosition();
@@ -2805,12 +2953,37 @@
       requestAnimationFrame(animate);
     }
 
+    // keep the screen awake while actively following something
+    let wakeLock = null;
+    async function syncWakeLock() {
+      const want = !!(followJid || meFollow) && !document.hidden;
+      if (want && !wakeLock && 'wakeLock' in navigator) {
+        try {
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLock.addEventListener('release', () => { wakeLock = null; });
+        } catch (e) {}
+      } else if (!want && wakeLock) {
+        try { wakeLock.release(); } catch (e) {}
+        wakeLock = null;
+      }
+    }
     function setFollowVehicle(jid) {
       followJid = jid;
       if (jid) { meFollow = false; $('fablocate').setAttribute('aria-pressed', 'false'); }
       document.querySelectorAll('.followbtn').forEach(bn =>
         bn.setAttribute('aria-pressed', String(!!jid && bn.dataset.jid === jid)));
+      // the card's follow button disappears with the card — this pill is the
+      // always-visible state + exit
+      const pill = $('followpill');
+      if (jid) {
+        const fv = vehicles.get(jid);
+        pill.innerHTML = 'Following ' + esc(fv ? fv.line : '') +
+          ' <span class="x" aria-hidden="true">✕</span>';
+        pill.hidden = false;
+      } else pill.hidden = true;
+      syncWakeLock();
     }
+    $('followpill').addEventListener('click', () => setFollowVehicle(null));
 
     function applyFilter() {
       let shown = 0;
@@ -2902,8 +3075,17 @@
       presentCard(node, lngLat);
     }
 
+    let occT = 0, occPend = null;
     function updateOcclusion() {
       if (!map) return;
+      // poll + moveend can both land in the same instant: coalesce bursts,
+      // with a trailing run so a 3D toggle still clears ghosts
+      const nowT = Date.now();
+      if (nowT - occT < 250) {
+        if (!occPend) occPend = setTimeout(() => { occPend = null; updateOcclusion(); }, 280 - (nowT - occT));
+        return;
+      }
+      occT = nowT;
       const on = pitched && map.getPitch() > 5 && map.getZoom() >= 15;
       let cam = null, camAlt = 0;
       // this MapLibre build has no getFreeCameraOptions(); derive the camera
@@ -3053,7 +3235,6 @@
     }
 
     function openInfo(v) {
-      const col = KIND_COLOR[v.kind]();
       const box = document.createElement('div');
       box.className = 'iw';
 
@@ -3104,7 +3285,18 @@
       presentCard(box, v.marker.getPosition());
       drawRoute(v, box, extras);
     }
-    function showErr(msg) { $('err').textContent = msg; $('err').hidden = false; }
+    let toastTimer = null;
+    function toast(msg, ms) {
+      const t = $('toast');
+      t.textContent = msg; t.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.hidden = true; }, ms || 4000);
+    }
+    function showErr(msg) {
+      $('err').textContent = msg; $('err').hidden = false;
+      // a collapsed sheet (or an open card) swallows #err — surface it on the map
+      if (MOBILE_MQ.matches) toast(msg);
+    }
 
     // =====================================================================
     // Trip planning: LocMatch for search, TripSearch for connections
@@ -3119,10 +3311,11 @@
         : { crd: { x: Math.round(item.lon * 1e6), y: Math.round(item.lat * 1e6) }, name: item.name };
       $(which).value = item.name;
       $('sugg-' + which).hidden = true;
+      $(which).setAttribute('aria-expanded', 'false');
       if (map) {
         dropPin(which, { lat: item.lat, lng: item.lon }, item.name);
         // typing an address means "show me this place" — jump there
-        map.flyTo({ center: [item.lon, item.lat], zoom: Math.max(map.getZoom(), 15.5), duration: 900 });
+        map.flyTo({ center: [item.lon, item.lat], zoom: Math.max(map.getZoom(), 15.5), duration: REDUCED ? 0 : 900 });
       }
       updateClearBtn();
     }
@@ -3266,8 +3459,11 @@
         box.hidden = false;
         return;
       }
-      for (const item of near) {
+      $(which).setAttribute('aria-expanded', 'true');
+      near.forEach((item, ri) => {
         const row = document.createElement('div');
+        row.setAttribute('role', 'option');
+        row.id = 'sugg-' + which + '-' + ri;
         const k = document.createElement('span');
         k.className = 'k';
         k.textContent = item.kind;
@@ -3284,17 +3480,19 @@
           far.textContent = Math.round(item.d) + ' km';
           row.appendChild(far);
         }
-        row.addEventListener('mousedown', e => { e.preventDefault(); pickSuggestion(which, item); });
+        // pointerdown, not mousedown: touch browsers deliver mousedown late (or
+        // not at all once the input blurs) — this fires reliably for finger + mouse
+        row.addEventListener('pointerdown', e => { e.preventDefault(); pickSuggestion(which, item); });
         box.appendChild(row);
-      }
+      });
       box.hidden = false;
     }
     const debFrom = debounce(v => searchLoc(v, $('sugg-from'), 'from'), 250);
     const debTo = debounce(v => searchLoc(v, $('sugg-to'), 'to'), 250);
     $('from').addEventListener('input', e => { trip.from = null; debFrom(e.target.value.trim()); updateClearBtn(); });
     $('to').addEventListener('input', e => { trip.to = null; debTo(e.target.value.trim()); updateClearBtn(); });
-    $('from').addEventListener('blur', () => setTimeout(() => { $('sugg-from').hidden = true; }, 120));
-    $('to').addEventListener('blur', () => setTimeout(() => { $('sugg-to').hidden = true; }, 120));
+    $('from').addEventListener('blur', () => setTimeout(() => { $('sugg-from').hidden = true; $('from').setAttribute('aria-expanded', 'false'); }, 120));
+    $('to').addEventListener('blur', () => setTimeout(() => { $('sugg-to').hidden = true; $('to').setAttribute('aria-expanded', 'false'); }, 120));
     $('from').addEventListener('focus', () => setArmed('from'));
     $('to').addEventListener('focus', () => setArmed('to'));
 
@@ -3375,9 +3573,26 @@
     $('go').addEventListener('click', planTrip);
     for (const w of ['from', 'to']) {
       $(w).addEventListener('keydown', e => {
+        const box = $('sugg-' + w), list = suggState[w] || [];
+        if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !box.hidden && list.length) {
+          e.preventDefault();
+          const rows = [...box.children].filter(r => r.getAttribute('role') === 'option');
+          if (!rows.length) return;
+          let i = rows.findIndex(r => r.classList.contains('on'));
+          i = e.key === 'ArrowDown' ? (i + 1) % rows.length : (i - 1 + rows.length) % rows.length;
+          rows.forEach((r, k2) => r.classList.toggle('on', k2 === i));
+          $(w).setAttribute('aria-activedescendant', rows[i].id);
+          rows[i].scrollIntoView({ block: 'nearest' });
+          return;
+        }
+        if (e.key === 'Escape') { box.hidden = true; $(w).setAttribute('aria-expanded', 'false'); return; }
         if (e.key !== 'Enter') return;
-        const list = suggState[w] || [];
-        if (!$('sugg-' + w).hidden && list.length) { e.preventDefault(); pickSuggestion(w, list[0]); return; }
+        if (!box.hidden && list.length) {
+          e.preventDefault();
+          const hi = [...box.children].findIndex(r => r.classList.contains('on'));
+          pickSuggestion(w, list[hi >= 0 ? hi : 0]);
+          return;
+        }
         if (w === 'to') planTrip();
       });
     }
@@ -3578,7 +3793,6 @@
       pitched = !pitched;
       try { localStorage.setItem('bm_3d', pitched ? '1' : '0'); } catch (e) {}
       apply3D();
-      syncRotation();
     });
     $('themebtn').addEventListener('click', () => {
       const next = isDark() ? 'light' : 'dark';
@@ -3612,13 +3826,17 @@
     // ---- bottom sheet: peek <-> expanded, dragged by the handle ----
     // Collapsing leaves a 52px stub visible, so the gesture always has a home of
     // its own and never competes with the map's pan surface.
-    const isMobile = () => window.matchMedia('(max-width: 44rem)').matches;
+    const isMobile = () => MOBILE_MQ.matches;
     function setSheet(state) {              // 'full' | 'half' | 'peek'
       const c = map && map.getCenter();
+      const prev = sheetState();
       if (state !== 'full') dismissKeyboard();
       document.body.classList.remove('panel-hidden');
       document.body.classList.toggle('panel-peek', state === 'peek');
       document.body.classList.toggle('panel-half', state === 'half');
+      $('grabber').setAttribute('aria-expanded', String(state !== 'peek'));
+      // a soft tick as the sheet snaps — ignored outside a user gesture
+      if (prev !== state && isMobile() && navigator.vibrate) navigator.vibrate(8);
       if (state !== 'full') window.scrollTo(0, 0);
       updatePeek();
       if (c) setTimeout(() => { if (map) map.setCenter(c); }, 320);
@@ -3629,9 +3847,15 @@
     }
     function setPeek(on) { setSheet(on ? 'peek' : 'full'); }
     function updatePeek() {
+      if (FAVS.length && document.body.classList.contains('panel-peek')) refreshFavDep();
+      updatePeekText();
+    }
+    function updatePeekText() {
       const n = [...vehicles.values()].filter(v => filters[chipOf(v.kind)]).length;
       const where = trip.from || trip.to ? 'tap to finish planning' : 'tap to plan a trip';
-      $('peek').textContent = n ? n + ' vehicles moving · ' + where : where;
+      $('peek').textContent = favDep.txt
+        ? favDep.txt + (n ? ' · ' + n + ' moving' : '')
+        : (n ? n + ' vehicles moving · ' + where : where);
     }
 
     (() => {
@@ -3658,7 +3882,9 @@
       const move = e => {
         if (!dragging) return;
         const dy = e.clientY - startY;
-        if (Math.abs(dy) > 6) moved = true;
+        // the sheet's backdrop blur is the jankiest paint on mid-range phones:
+        // trade it for an opaque surface only while the finger is down
+        if (Math.abs(dy) > 6 && !moved) { moved = true; document.body.classList.add('sheet-dragging'); }
         if (!moved) return;
         const dt = e.timeStamp - lastT;
         if (dt > 0) vel = vel * 0.6 + ((e.clientY - lastY) / dt) * 0.4;   // px/ms, smoothed
@@ -3671,6 +3897,7 @@
       const finish = e => {
         if (!dragging) return;
         dragging = false;
+        document.body.classList.remove('sheet-dragging');
         sheet.style.transition = '';
         sheet.style.transform = '';
         if (!moved) {
@@ -3694,7 +3921,9 @@
       };
       // drag targets: the handle plus the sheet's non-scrolling chrome — the
       // results list keeps native scrolling
-      const chrome = [grab, sheet.querySelector('header')].filter(Boolean);
+      // cardback doubles as a drag handle: in the installed PWA the header is
+      // hidden, leaving the grabber as the only drag surface otherwise
+      const chrome = [grab, sheet.querySelector('header'), $('cardback')].filter(Boolean);
       for (const t of chrome) {
         t.addEventListener('pointerdown', start);
         t.addEventListener('pointermove', move);
@@ -3708,14 +3937,24 @@
     // floating map buttons (phone): 3D mirrors the sheet's toggle; locate-me
     // drops a blue dot at the GPS fix and flies there.
     $('fab3d').addEventListener('click', () => $('btn3d').click());
-    // compass: appears whenever north isn't up; tap to reset
-    $('fabcompass').addEventListener('click', () => map && map.easeTo({ bearing: 0, duration: 500 }));
     $('fabtheme').addEventListener('click', () => $('themebtn').click());
+    // share the current view as a ?lat&lon&z deep link
+    $('fabshare').addEventListener('click', async () => {
+      if (!map) return;
+      const c = map.getCenter();
+      const url = location.origin + location.pathname +
+        '?lat=' + c.lat.toFixed(5) + '&lon=' + c.lng.toFixed(5) + '&z=' + map.getZoom().toFixed(2);
+      try {
+        if (navigator.share) await navigator.share({ title: 'BimRadar', url });
+        else { await navigator.clipboard.writeText(url); toast('Link copied'); }
+      } catch (e) { /* user closed the share sheet */ }
+    });
     // Follow-me: first tap starts following (blue dot + camera glued to you),
     // panning the map keeps the dot but releases the camera, tapping again
     // re-centres. The GPS watch pauses when the tab is hidden.
     let meMarker = null, meWatch = null, meFollow = false;
     function meDot(ll) {
+      $('fablocate').classList.remove('busy');
       if (!meMarker) {
         const el2 = document.createElement('div');
         el2.className = 'medot'; el2.innerHTML = '<i></i>';
@@ -3728,13 +3967,19 @@
         const ll = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         meDot(ll);
         if (meFollow && map) map.easeTo({ center: [ll.lng, ll.lat],
-          zoom: Math.max(map.getZoom(), 15.8), duration: 700 });
-      }, () => { meSetFollow(false); }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 2000 });
+          zoom: Math.max(map.getZoom(), 15.8), duration: REDUCED ? 0 : 700 });
+      }, () => {
+        $('fablocate').classList.remove('busy');
+        meSetFollow(false);
+        toast('Location unavailable — check the site permission');
+      }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 2000 });
     }
     function meSetFollow(on) {
       meFollow = on;
       $('fablocate').setAttribute('aria-pressed', String(on));
-      if (on) { followJid = null; meStartWatch(); }
+      $('fablocate').classList.toggle('busy', on && !meMarker);   // pulse until the first fix
+      if (on) { followJid = null; $('followpill').hidden = true; meStartWatch(); }
+      syncWakeLock();
     }
     $('fablocate').addEventListener('click', () => {
       if (!navigator.geolocation || !map) return;
@@ -3744,6 +3989,32 @@
         map.easeTo({ center: [ll.lng, ll.lat], zoom: Math.max(map.getZoom(), 15.8), duration: 700 });
       }
     });
+
+    // manifest shortcuts (long-press on the app icon): ?plan=1 jumps straight
+    // into trip planning, ?nearby=1 opens the nearest stop's departure board
+    function handleShortcut() {
+      const qp = new URLSearchParams(location.search);
+      if (qp.get('plan')) {
+        setSheet('full');
+        setTimeout(() => $('to').focus(), 350);
+      } else if (qp.get('nearby') && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(async pos => {
+          const ll = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          meDot(ll);
+          if (map) map.easeTo({ center: [ll.lng, ll.lat], zoom: Math.max(map.getZoom(), 15.8), duration: REDUCED ? 0 : 700 });
+          try {
+            const res = await hafas('LocGeoPos', {
+              ring: { cCrd: { x: Math.round(ll.lng * 1e6), y: Math.round(ll.lat * 1e6) }, maxDist: 600, minDist: 0 },
+              getStops: true, getPOIs: false, maxLoc: 1
+            });
+            const near = (res.locL || []).find(l => l.type === 'S' && l.crd);
+            if (near) openStopData({ lid: near.lid, name: shortStop(near.name),
+              lat: near.crd.y / 1e6, lng: near.crd.x / 1e6 });
+            else toast('No stop found nearby');
+          } catch (e) { toast('No stop found nearby'); }
+        }, () => toast('Location unavailable — check the site permission'));
+      }
+    }
 
     // iOS: the keyboard overlays the fixed sheet without resizing the layout —
     // lift the sheet by the keyboard height so field + suggestions stay visible.
@@ -3776,14 +4047,28 @@
       } else if (map && !pollTimer) {
         poll(); pollTimer = setInterval(poll, 7000);
         if (meFollow) meStartWatch();
+        if (!rafOn) requestAnimationFrame(animate);   // the loop parks itself while hidden
+        syncWakeLock();                               // the OS drops wake locks on hide — retake
       }
     });
     // Open on the map, not on the panel: on phones the sheet starts collapsed to its
     // peek stub. Desktop keeps it open — there it sits beside the map, not over it.
-    if (window.matchMedia('(max-width: 44rem)').matches) {
+    if (MOBILE_MQ.matches) {
       document.body.classList.add('panel-peek');
+      $('grabber').setAttribute('aria-expanded', 'false');
       updatePeek();
     }
+    renderFavs();
+    // rotating a phone across the breakpoint must not strand the UI in the
+    // other mode's body classes (card pane in the sidebar, orphaned sheet state)
+    MOBILE_MQ.addEventListener('change', e => {
+      closeCard();
+      const m2 = document.querySelector('main');
+      m2.style.bottom = ''; m2.style.maxHeight = ''; m2.style.transform = '';
+      if (e.matches) setSheet('peek');
+      else document.body.classList.remove('panel-peek', 'panel-half');
+      if (map) setTimeout(() => map.resize(), 80);
+    });
 
     // maplibre-gl.js is deferred, so it hasn't executed yet when this inline
     // script runs — but deferred scripts always finish before DOMContentLoaded.
