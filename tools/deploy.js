@@ -86,8 +86,11 @@ async function main() {
     }
     log('deploy ' + sha + ' OK');
 
-    // keep the newest 20 backups
-    const old = fs.readdirSync(BACKUPS).sort().slice(0, -20);
+    // keep the newest 20 backups; only touch timestamp-sha dirs so other
+    // entries in BACKUPS (e.g. .poller-sha256) are never pruned
+    const old = fs.readdirSync(BACKUPS)
+      .filter(d => /^\d{4}-\d{2}-\d{2}T[\d-]+Z-[0-9a-f]+$/.test(d))
+      .sort().slice(0, -20);
     for (const d of old) fs.rmSync(path.join(BACKUPS, d), { recursive: true, force: true });
   } finally {
     fs.rmSync(LOCK, { force: true });
