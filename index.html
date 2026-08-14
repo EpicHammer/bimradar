@@ -126,7 +126,7 @@
         position: fixed; left: 0; right: 0; bottom: 0; top: auto;
         width: 100%; max-width: 100%; margin: 0;
         max-height: 78dvh; overflow-y: auto; overscroll-behavior: contain;
-        border-right: 0; border-radius: 18px 18px 0 0;
+        border-right: 0; border-radius: 22px 22px 0 0;
         box-shadow: 0 -12px 40px rgba(0,0,0,.38);
         padding-bottom: calc(.9rem + env(safe-area-inset-bottom, 0px));
         transition: transform .28s ease, opacity .2s ease;
@@ -190,6 +190,38 @@
     .followbtn[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
 
     .tripform { display: grid; gap: .5rem; }
+    /* directions card: origin dot — dotted connector — destination dot, with a
+       round swap button beside the fields (the pattern every map app trained
+       people on) */
+    .planner { position: relative; border: 1px solid var(--line); border-radius: 16px;
+      background: color-mix(in srgb, var(--card) 80%, transparent);
+      box-shadow: inset 0 1px 0 var(--glasshi);
+      padding: .3rem .55rem .3rem .8rem; }
+    .plannergrid { display: grid; grid-template-columns: 14px 1fr 42px;
+      align-items: center; column-gap: .55rem; }
+    .dotcol { align-self: stretch; display: flex; flex-direction: column;
+      align-items: center; padding: 1.15rem 0; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+    .dot.dfrom { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
+    .dot.dto { background: var(--tram); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tram) 20%, transparent); }
+    .dotline { flex: 1; width: 0; border-left: 2px dotted color-mix(in srgb, var(--fg) 26%, transparent); margin: 5px 0; }
+    .fields { display: flex; flex-direction: column; min-width: 0; }
+    .fielddiv { height: 1px; background: var(--line); }
+    .fields .fieldwrap input { border: 0; background: transparent; box-shadow: none;
+      border-radius: 10px; padding-top: .68rem; padding-bottom: .68rem; padding-left: .15rem; }
+    .fields .fieldwrap input:focus { border-color: transparent;
+      box-shadow: none; background: color-mix(in srgb, var(--accent) 7%, transparent); }
+    .fields .fieldwrap input.armed { border-color: transparent;
+      box-shadow: none; background: color-mix(in srgb, var(--accent) 12%, transparent); }
+    #from { padding-right: 4.6rem; }
+    #to { padding-right: 2.7rem; }
+    .swapbtn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--card) 88%, transparent); color: var(--muted);
+      display: grid; place-items: center; cursor: pointer; padding: 0;
+      transition: color .15s ease, border-color .15s ease, transform .15s ease; }
+    .swapbtn svg { width: 17px; height: 17px; }
+    .swapbtn:hover { color: var(--accent); border-color: var(--accent); }
+    .swapbtn:active { transform: scale(.92); }
     .fieldwrap { position: relative; }
     .fieldwrap input { width: 100%; font: inherit; font-size: 16px; color: var(--fg);
       background: color-mix(in srgb, var(--card) 80%, transparent);
@@ -226,6 +258,7 @@
       background: transparent; color: var(--muted); font-size: 1rem; cursor: pointer;
       display: grid; place-items: center; transition: border-color .15s ease, color .15s ease, transform .15s ease; }
     .clr svg { width: 15px; height: 15px; display: block; }
+    .clr[hidden] { display: none; }   /* display:grid would beat the UA's [hidden] rule */
     .clr:hover { border-color: var(--tram); color: var(--tram); transform: translateY(-1px); }
     .clr:active { transform: scale(.96); }
     .go { flex: 1; border: 0; border-radius: 12px; padding: .6rem; cursor: pointer;
@@ -359,7 +392,8 @@
       body.panel-peek .grabber { height: 50px; }
       .peek { top: 24px; }
       .mini { width: 38px; height: 38px; }
-      .fieldwrap input { padding-right: 5.4rem; }
+      #from { padding-right: 5.3rem; }
+      #to { padding-right: 3rem; }
       .sugg div { padding: .62rem .75rem; min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; }
       .cardback { min-height: 44px; touch-action: none; }   /* also a sheet drag handle */
     }
@@ -388,16 +422,28 @@
     .followpill .x { color: var(--muted); font-size: 1rem; line-height: 1; }
     body.panel-half .followpill { bottom: calc(40dvh + 16px); }
 
-    /* favourite stops: one-tap departure boards */
-    #favrow { display: flex; gap: .4rem; flex-wrap: wrap; margin: .1rem 0 .55rem; }
+    /* favourite stops: a scrolling shelf of H-badge icons, Apple Maps style */
+    #favrow { display: block; margin: .1rem 0 .6rem; }
     #favrow[hidden] { display: none; }
-    .favchip { display: inline-flex; align-items: center; gap: .35rem; min-height: 38px;
-      border: 1px solid var(--line); border-radius: 999px; cursor: pointer;
-      background: color-mix(in srgb, var(--card) 80%, transparent); color: var(--fg);
-      font: inherit; font-size: .8rem; font-weight: 600; padding: .25rem .8rem;
-      transition: border-color .15s ease; max-width: 100%; }
-    .favchip:hover { border-color: var(--accent); }
-    .favchip .st { color: #e8b13c; }
+    .sechead { font-size: .7rem; font-weight: 700; letter-spacing: .09em;
+      text-transform: uppercase; color: var(--muted); margin: 0 0 .45rem .15rem; }
+    .favscroll { display: flex; gap: .6rem; overflow-x: auto; padding: 2px 2px 4px;
+      scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .favscroll::-webkit-scrollbar { display: none; }
+    .favchip { flex: none; width: 64px; display: flex; flex-direction: column;
+      align-items: center; gap: .32rem; border: 0; background: transparent;
+      padding: 0; cursor: pointer; font: inherit; color: var(--fg); }
+    .favchip .hbadge { width: 46px; height: 46px; border-radius: 15px;
+      display: grid; place-items: center;
+      background: color-mix(in srgb, var(--card) 82%, transparent);
+      border: 1px solid var(--line);
+      box-shadow: inset 0 1px 0 var(--glasshi), 0 2px 8px rgba(0,0,0,.12);
+      transition: transform .15s ease, border-color .15s ease; }
+    .favchip:hover .hbadge { border-color: var(--accent); }
+    .favchip:active .hbadge { transform: scale(.93); }
+    .favchip .hbadge svg { width: 27px; height: 27px; display: block; }
+    .favchip .lbl { font-size: .68rem; color: var(--muted); max-width: 64px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .favbtn { display: inline-flex; align-items: center; gap: .3rem; margin: .5rem 0 0 .5rem;
       border: 1px solid var(--line); border-radius: 999px; background: transparent;
       color: var(--fg); font: inherit; font-size: .8rem; font-weight: 600;
@@ -462,33 +508,43 @@
 
     <div id="favrow" hidden></div>
     <div class="tripform">
-      <div class="fieldwrap">
-        <input id="from" type="text" placeholder="From — stop, address…" autocomplete="off"
-          role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="sugg-from">
-        <span class="minis">
-          <button class="mini" id="pick-from" title="Pick on the map (no typing)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.2-5.4-6.2-10.2a6.2 6.2 0 1 1 12.4 0C18.2 15.6 12 21 12 21z"/><circle cx="12" cy="10.6" r="2.1"/></svg>
+      <div class="planner">
+        <div class="plannergrid">
+          <div class="dotcol" aria-hidden="true">
+            <span class="dot dfrom"></span><span class="dotline"></span><span class="dot dto"></span>
+          </div>
+          <div class="fields">
+            <div class="fieldwrap">
+              <input id="from" type="text" placeholder="From — stop, address…" autocomplete="off"
+                role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="sugg-from">
+              <span class="minis">
+                <button class="mini" id="pick-from" title="Pick on the map (no typing)" aria-label="Pick start on the map">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.2-5.4-6.2-10.2a6.2 6.2 0 1 1 12.4 0C18.2 15.6 12 21 12 21z"/><circle cx="12" cy="10.6" r="2.1"/></svg>
+                </button>
+                <button class="mini" id="usegeo" title="Use my location" aria-label="Use my location">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3"/></svg>
+                </button>
+              </span>
+              <div class="sugg" id="sugg-from" role="listbox" hidden></div>
+            </div>
+            <div class="fielddiv" aria-hidden="true"></div>
+            <div class="fieldwrap">
+              <input id="to" type="text" placeholder="Where to?" autocomplete="off"
+                role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="sugg-to">
+              <span class="minis">
+                <button class="mini" id="pick-to" title="Pick on the map (no typing)" aria-label="Pick destination on the map">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.2-5.4-6.2-10.2a6.2 6.2 0 1 1 12.4 0C18.2 15.6 12 21 12 21z"/><circle cx="12" cy="10.6" r="2.1"/></svg>
+                </button>
+              </span>
+              <div class="sugg" id="sugg-to" role="listbox" hidden></div>
+            </div>
+          </div>
+          <button class="swapbtn" id="swap" title="Swap start and destination" aria-label="Swap start and destination">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 20V7M8 7L5 10M8 7l3 3M16 4v13m0 0l-3-3m3 3l3-3"/></svg>
           </button>
-          <button class="mini" id="usegeo" title="Use my location">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3"/></svg>
-          </button>
-        </span>
-        <div class="sugg" id="sugg-from" role="listbox" hidden></div>
+        </div>
       </div>
-      <div class="fieldwrap">
-        <input id="to" type="text" placeholder="To — where are you going?" autocomplete="off"
-          role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="sugg-to">
-        <span class="minis">
-          <button class="mini" id="pick-to" title="Pick on the map (no typing)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.2-5.4-6.2-10.2a6.2 6.2 0 1 1 12.4 0C18.2 15.6 12 21 12 21z"/><circle cx="12" cy="10.6" r="2.1"/></svg>
-          </button>
-          <button class="mini" id="swap" title="Swap">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 20V7M8 7L5 10M8 7l3 3M16 4v13m0 0l-3-3m3 3l3-3"/></svg>
-          </button>
-        </span>
-        <div class="sugg" id="sugg-to" role="listbox" hidden></div>
-      </div>
-        <p class="pickhint" id="pickhint" hidden></p>
+      <p class="pickhint" id="pickhint" hidden></p>
       <div class="gorow">
         <button class="go" id="go">Find connections</button>
         <button class="clr" id="clear" title="Clear search" aria-label="Clear search" hidden>
@@ -2504,7 +2560,7 @@
         return;
       }
       const p = m.getPosition();
-      openStopData({ lid: m.__lid, name: m.__name, lat: p.lat, lng: p.lng });
+      openStopData({ lid: m.__lid, name: m.__name, tram: !!m.__tram, lat: p.lat, lng: p.lng });
     }
     // the same departure card, openable without a marker (favourite chips,
     // the ?nearby shortcut)
@@ -2554,24 +2610,42 @@
     function toggleFav(f) {
       const i = favIdx(f.lid);
       if (i >= 0) FAVS.splice(i, 1);
-      else FAVS.push({ lid: f.lid, name: f.name, lat: f.lat, lng: f.lng });
+      else FAVS.push({ lid: f.lid, name: f.name, lat: f.lat, lng: f.lng, tram: !!f.tram });
       saveFavs(); renderFavs(); updatePeek();
       return favIdx(f.lid) >= 0;
     }
     function renderFavs() {
       const row = $('favrow');
       row.replaceChildren();
-      for (const f of FAVS.slice(0, 6)) {
-        const b = document.createElement('button');
-        b.className = 'favchip';
-        const st = document.createElement('span');
-        st.className = 'st'; st.setAttribute('aria-hidden', 'true'); st.textContent = '★';
-        b.append(st, document.createTextNode(f.name));
-        b.addEventListener('click', () => {
-          if (map) map.flyTo({ center: [f.lng, f.lat], zoom: Math.max(map.getZoom(), 15.5), duration: REDUCED ? 0 : 700 });
-          openStopData(f);
-        });
-        row.appendChild(b);
+      if (FAVS.length) {
+        const head = document.createElement('div');
+        head.className = 'sechead'; head.textContent = 'Favourites';
+        const scroll = document.createElement('div');
+        scroll.className = 'favscroll';
+        for (const f of FAVS.slice(0, 12)) {
+          const b = document.createElement('button');
+          b.className = 'favchip'; b.title = f.name;
+          const badge = document.createElement('span');
+          badge.className = 'hbadge';
+          // the same Haltestelle "H" badge the map uses — red for tram stops
+          const col = f.tram ? cssv('--tram') : '#5b6472';
+          badge.innerHTML =
+            '<svg viewBox="0 0 18 18" aria-hidden="true">' +
+              '<rect x="1.6" y="1.6" width="14.8" height="14.8" rx="4.6" fill="' + col + '" stroke="#ffffff" stroke-width="2"/>' +
+              '<rect x="5.9" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
+              '<rect x="10.2" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
+              '<rect x="5.9" y="8.1" width="6.2" height="1.9" fill="#ffffff"/>' +
+            '</svg>';
+          const lbl = document.createElement('span');
+          lbl.className = 'lbl'; lbl.textContent = shortStop(f.name);
+          b.append(badge, lbl);
+          b.addEventListener('click', () => {
+            if (map) map.flyTo({ center: [f.lng, f.lat], zoom: Math.max(map.getZoom(), 15.5), duration: REDUCED ? 0 : 700 });
+            openStopData(f);
+          });
+          scroll.appendChild(b);
+        }
+        row.append(head, scroll);
       }
       row.hidden = !FAVS.length;
       favDep.t = 0;                  // favourites changed — refetch the peek line
