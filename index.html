@@ -36,6 +36,7 @@
   <script defer src="./maplibre-gl.js?v=4.7.1"></script>
   <style>
     :root {
+      --sab: env(safe-area-inset-bottom, 0px);
       color-scheme: dark;
       --bg: #0d0f12; --fg: #e8eaed; --muted: #9aa0a6; --accent: #6ea8fe;
       --line: #23262b; --card: #14171c; --ink-2: #c3c2b7; --ink-3: #898781;
@@ -3640,29 +3641,36 @@
 
     (() => {
       const grab = $('grabber'), sheet = document.querySelector('main');
-      const ORDER = ['full', 'half', 'peek'];
-      let startY = 0, dy = 0, dragging = false, moved = false, fromState = 'full';
-      const BASE = {
-        full: '0px',
-        half: '52%',
-        peek: 'calc(100% - 58px - env(safe-area-inset-bottom, 0px))'
+      let dragging = false, moved = false, startY = 0, startOff = 0, curOff = 0;
+      let lastY = 0, lastT = 0, vel = 0;
+
+      const sab = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0;
+      // pixel offset of each snap point below the sheet's expanded position —
+      // must mirror the CSS transforms for .panel-half / .panel-peek
+      const offsets = () => {
+        const H = sheet.offsetHeight;
+        return { full: 0, half: H * 0.52, peek: Math.max(0, H - 58 - sab()) };
       };
       const start = e => {
         if (!isMobile()) return;
-        dragging = true; moved = false; startY = e.clientY; dy = 0;
-        fromState = sheetState();
-        if (fromState === 'full') dismissKeyboard();
+        dragging = true; moved = false;
+        startY = lastY = e.clientY; lastT = e.timeStamp; vel = 0;
+        startOff = curOff = offsets()[sheetState()];
+        if (sheetState() === 'full') dismissKeyboard();
         sheet.style.transition = 'none';
         try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
       };
       const move = e => {
         if (!dragging) return;
-        dy = e.clientY - startY;
+        const dy = e.clientY - startY;
         if (Math.abs(dy) > 6) moved = true;
         if (!moved) return;
-        const d = fromState === 'peek' ? Math.min(0, dy)
-                : fromState === 'full' ? Math.max(0, dy) : dy;
-        sheet.style.transform = 'translateY(' + BASE[fromState] + ') translateY(' + (d * 0.9) + 'px)';
+        const dt = e.timeStamp - lastT;
+        if (dt > 0) vel = vel * 0.6 + ((e.clientY - lastY) / dt) * 0.4;   // px/ms, smoothed
+        lastY = e.clientY; lastT = e.timeStamp;
+        const o = offsets();
+        curOff = Math.max(0, Math.min(o.peek, startOff + dy));
+        sheet.style.transform = 'translateY(' + curOff + 'px)';
         e.preventDefault();
       };
       const finish = e => {
@@ -3670,13 +3678,19 @@
         dragging = false;
         sheet.style.transition = '';
         sheet.style.transform = '';
-        const idx = ORDER.indexOf(fromState);
         if (!moved) {
-          if (e.currentTarget === grab) setSheet(fromState === 'peek' ? 'full' : 'peek');
-        } else if (Math.abs(dy) > 55) {
-          const steps = Math.abs(dy) > 230 ? 2 : 1;
-          const to = ORDER[Math.max(0, Math.min(2, idx + (dy > 0 ? steps : -steps)))];
-          setSheet(to);
+          if (e.currentTarget === grab) setSheet(sheetState() === 'peek' ? 'full' : 'peek');
+        } else {
+          // snap to wherever the sheet would coast to: a flick carries much
+          // further than it was dragged, so it skips past the half stop.
+          const o = offsets();
+          const projected = curOff + vel * 220;
+          let best = 'full', bestD = Infinity;
+          for (const k of ['full', 'half', 'peek']) {
+            const d = Math.abs(o[k] - projected);
+            if (d < bestD) { bestD = d; best = k; }
+          }
+          setSheet(best);
           // a drag mustn't fire the click of whatever chip/button it started on
           document.addEventListener('click', ev => { ev.stopPropagation(); ev.preventDefault(); },
             { capture: true, once: true });
@@ -3684,7 +3698,7 @@
         try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) {}
       };
       // drag targets: the handle plus the sheet's non-scrolling chrome — the
-      // results list keeps native scrolling untouched
+      // results list keeps native scrolling
       const chrome = [grab, sheet.querySelector('header'), sheet.querySelector('.chiprow')].filter(Boolean);
       for (const t of chrome) {
         t.addEventListener('pointerdown', start);
