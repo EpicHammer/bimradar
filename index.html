@@ -166,6 +166,17 @@
       * { transition: none !important; animation: none !important; }
     }
 
+    /* card mode: a tapped vehicle/stop/landmark takes over the sheet (phone) */
+    #cardpane { display: none; }
+    body.card-mode #cardpane { display: block; }
+    body.card-mode .tripform, body.card-mode #results, body.card-mode #livetxt,
+    body.card-mode #triperr, body.card-mode #err { display: none; }
+    .cardback { display: inline-flex; align-items: center; gap: .25rem; border: 0;
+      background: transparent; color: var(--accent); font: inherit; font-size: .92rem;
+      font-weight: 650; padding: 0 .3rem .55rem 0; cursor: pointer; }
+    .cardback svg { width: 17px; height: 17px; }
+    #cardbody .iw { background: transparent; padding: 0; }
+
     .tripform { display: grid; gap: .5rem; }
     .fieldwrap { position: relative; }
     .fieldwrap input { width: 100%; font: inherit; font-size: 16px; color: var(--fg);
@@ -369,6 +380,13 @@
 
     </header>
 
+    <section id="cardpane">
+      <button class="cardback" id="cardback">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Map
+      </button>
+      <div id="cardbody"></div>
+    </section>
+
     <p class="err" id="err" hidden></p>
 
     <div class="tripform">
@@ -502,6 +520,7 @@
     // canonical line names (termini) from the official Verbund Steiermark GTFS feed
     let LINES = {};
     fetch('./lines.json').then(r => r.ok ? r.json() : {}).then(d => { LINES = d; }).catch(() => {});
+    const MOBILE_MQ = window.matchMedia('(max-width: 44rem)');
     const vehicles = new Map();   // jid -> {marker, kind, line, dir, from, to, t0, dur, head}
     const LMK_OCC = [];           // landmark occluders, filled once by the 3D layer's onAdd
     const filters = { tram: true, bus: true, regio: true, night: true, train: true };
@@ -573,6 +592,29 @@
         },
         close() { if (p.isOpen()) p.remove(); }
       };
+    }
+
+    // On phones a tapped thing takes over the SHEET (native pattern); the
+    // floating popup stays for desktop. The camera nudges so the tapped point
+    // remains visible above the half-height sheet.
+    function presentCard(node, pos) {
+      if (MOBILE_MQ.matches) {
+        info.close();
+        document.getElementById('cardbody').replaceChildren(node);
+        document.body.classList.add('card-mode');
+        setSheet('half');
+        if (map && pos) map.easeTo({ center: [pos.lng, pos.lat],
+          offset: [0, -Math.round(window.innerHeight * 0.16)], duration: 380 });
+      } else {
+        info.setContent(node);
+        info.open({ lngLat: pos });
+      }
+    }
+    function closeCard() {
+      if (!document.body.classList.contains('card-mode')) return;
+      document.body.classList.remove('card-mode');
+      document.getElementById('cardbody').replaceChildren();
+      clearRoute();
     }
 
     // GeoJSON line layers stand in for google.maps.Polyline (route + trip overlays)
@@ -2056,11 +2098,20 @@
     }
 
     function initMap() {
+      // open where you left off (or where a shared ?lat&lon&z link points)
+      let cam = null;
+      try { cam = JSON.parse(localStorage.getItem('bm_cam') || 'null'); } catch (e) {}
+      const qp = new URLSearchParams(location.search);
+      if (qp.get('lat') && qp.get('lon')) {
+        cam = { lat: +qp.get('lat'), lng: +qp.get('lon'), z: +(qp.get('z') || 15.5) };
+      }
+      if (!cam || !isFinite(cam.lat) || !isFinite(cam.lng) || !isFinite(cam.z) ||
+          Math.abs(cam.lat - GRAZ.lat) > 0.6 || Math.abs(cam.lng - GRAZ.lng) > 0.9) cam = null;
       map = new maplibregl.Map({
         container: 'map',
         pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
         style: isDark() ? STYLE.dark : STYLE.light,
-        center: [GRAZ.lng, GRAZ.lat], zoom: 13,
+        center: cam ? [cam.lng, cam.lat] : [GRAZ.lng, GRAZ.lat], zoom: cam ? cam.z : 13,
         attributionControl: { compact: true },
         dragRotate: false, pitchWithRotate: false, maxPitch: 45
       });
@@ -2069,13 +2120,21 @@
       map.on('error', () => {});                 // tile/style hiccups shouldn't reach the UI
       info = makeInfo();
       map.on('load', () => {
-        map.on('moveend', () => { poll(); loadStops(); updateOcclusion(); });
+        map.on('moveend', () => {
+          poll(); loadStops(); updateOcclusion();
+          try {
+            const c2 = map.getCenter();
+            localStorage.setItem('bm_cam', JSON.stringify(
+              { lat: +c2.lat.toFixed(5), lng: +c2.lng.toFixed(5), z: +map.getZoom().toFixed(2) }));
+          } catch (e) {}
+        });
         // (no zoomend resize: the animate loop glides marker scale with the zoom)
         map.on('click', e => {
           if (armed && e.lngLat) { pickPoint(armed, e.lngLat); return; }
           const lm = landmarkHit(e.point);
           if (lm) { openLandmark(lm.L, lm.part, e.lngLat); return; }
           info.close(); clearRoute();
+          if (document.body.classList.contains('card-mode')) { closeCard(); setSheet('peek'); }
         });
         apply3D();
         poll(); loadStops();
@@ -2269,7 +2328,8 @@
 
     async function loadStops() {
       if (!map || !stopsOn || stopsBusy) return;
-      if (map.getZoom() < STOP_MIN_ZOOM) { clearStops(); lastStopKey = ''; return; }
+      const minZ = MOBILE_MQ.matches ? 14 : STOP_MIN_ZOOM;   // phones: fewer DOM markers
+      if (map.getZoom() < minZ) { clearStops(); lastStopKey = ''; return; }
       const c = map.getCenter(), b = map.getBounds();
       if (!c || !b) return;
       // one ring query covering the viewport, capped so we never ask for the world
@@ -2305,7 +2365,16 @@
           if (!g) groups.set(key, { loc: master, tram: isTram });
           else g.tram = g.tram || isTram;      // tram-served if ANY quay is
         });
-        for (const [key, g] of groups) {
+        // phones: cap the badge count — hundreds of DOM markers jank the pan
+        let entries = [...groups];
+        if (MOBILE_MQ.matches && entries.length > 150) {
+          const d2 = l2 => {
+            const dx = (l2.crd.x / 1e6 - c.lng), dy = (l2.crd.y / 1e6 - c.lat);
+            return dx * dx + dy * dy;
+          };
+          entries = entries.sort((x, y) => d2(x[1].loc) - d2(y[1].loc)).slice(0, 150);
+        }
+        for (const [key, g] of entries) {
           const l = g.loc;
           const id = key;
           seen.add(id);
@@ -2340,7 +2409,7 @@
       box.className = 'iw';
       const h = document.createElement('b'); h.textContent = m.__name;
       box.append(h, document.createTextNode('Loading departures…'));
-      info.setContent(box); info.open({ anchor: m });
+      presentCard(box, m.getPosition());
       try {
         const res = await hafas('StationBoard', { type: 'DEP', stbLoc: { lid: m.__lid }, maxJny: 8 });
         const prodL = (res.common && res.common.prodL) || [];
@@ -2787,8 +2856,7 @@
       node.innerHTML = '<b>' + esc(title) + '</b>' +
         ((part && part.n) ? '<div style="margin-top:2px;color:var(--muted);font-size:.72rem;letter-spacing:.02em">' + esc(L.name) + '</div>' : '') +
         '<div style="margin-top:5px;color:var(--muted);font-size:.82rem;line-height:1.45;max-width:240px">' + esc(text) + '</div>';
-      info.setContent(node);
-      info.open({ lngLat });
+      presentCard(node, lngLat);
     }
 
     function updateOcclusion() {
@@ -2984,8 +3052,7 @@
       extras.className = 'extras';
       box.appendChild(extras);
 
-      info.setContent(box);
-      info.open({ anchor: v.marker });
+      presentCard(box, v.marker.getPosition());
       drawRoute(v, box, extras);
     }
     function showErr(msg) { $('err').textContent = msg; $('err').hidden = false; }
@@ -3487,6 +3554,7 @@
       // the map container changes size — recentre once the transition has settled
       if (c) setTimeout(() => { if (map) map.setCenter(c); }, 320);
     }
+    $('cardback').addEventListener('click', closeCard);
     $('panelhide').addEventListener('click', () => togglePanel(true));
 
     $('panelshow').addEventListener('click', () => togglePanel(false));
