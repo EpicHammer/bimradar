@@ -423,11 +423,7 @@
     <button class="tbtn" id="fablocate" title="My location" aria-label="My location">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3"/></svg>
     </button>
-    <button class="tbtn" id="fab3d" title="3D view" aria-label="3D view" aria-pressed="false" style="font-size:.72rem;font-weight:700">3D</button>
     <button class="tbtn" id="fabtheme" title="Light/dark" aria-label="Switch light/dark theme"></button>
-    <button class="tbtn" id="fabshare" title="Share this view" aria-label="Share this view">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="2.6"/><circle cx="17.5" cy="5.5" r="2.6"/><circle cx="17.5" cy="18.5" r="2.6"/><path d="M8.4 10.7l6.8-3.9M8.4 13.3l6.8 3.9"/></svg>
-    </button>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   <button class="followpill" id="followpill" hidden></button>
@@ -732,6 +728,8 @@
     // ---------- 3D: tilted camera + extruded buildings ----------
     let pitched = false;
     try { pitched = localStorage.getItem('bm_3d') === '1'; } catch (e) {}
+    // phones are always 3D — it simply looks better, and the toggle FAB is gone
+    if (MOBILE_MQ.matches) pitched = true;
     // The Uhrturm, hand-built from three stacked extrusion tiers (shaft, wooden
     // gallery ring, roof cap) at its real OSM location — the Schlossberg has no
     // building footprints, so without it the city's landmark hill is a void.
@@ -2187,7 +2185,6 @@
       if (pitched) ensureThree();          // lazy-load the modeled tower
       map.easeTo({ pitch: pitched ? 45 : 0, duration: REDUCED ? 0 : 650 });
       $('btn3d').setAttribute('aria-pressed', String(pitched));
-      $('fab3d').setAttribute('aria-pressed', String(pitched));
     }
 
     function initMap() {
@@ -3937,19 +3934,7 @@
     })();
     // floating map buttons (phone): 3D mirrors the sheet's toggle; locate-me
     // drops a blue dot at the GPS fix and flies there.
-    $('fab3d').addEventListener('click', () => $('btn3d').click());
     $('fabtheme').addEventListener('click', () => $('themebtn').click());
-    // share the current view as a ?lat&lon&z deep link
-    $('fabshare').addEventListener('click', async () => {
-      if (!map) return;
-      const c = map.getCenter();
-      const url = location.origin + location.pathname +
-        '?lat=' + c.lat.toFixed(5) + '&lon=' + c.lng.toFixed(5) + '&z=' + map.getZoom().toFixed(2);
-      try {
-        if (navigator.share) await navigator.share({ title: 'BimRadar', url });
-        else { await navigator.clipboard.writeText(url); toast('Link copied'); }
-      } catch (e) { /* user closed the share sheet */ }
-    });
     // Follow-me: first tap starts following (blue dot + camera glued to you),
     // panning the map keeps the dot but releases the camera, tapping again
     // re-centres. The GPS watch pauses when the tab is hidden.
