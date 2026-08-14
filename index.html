@@ -3905,8 +3905,12 @@
           // further than it was dragged, so it skips past the half stop.
           const o = offsets();
           const projected = curOff + vel * 220;
+          // 'half' is the CARD state: for the plain trip form it shows exactly
+          // one input row and reads as broken — the form sheet snaps full<->peek
+          const snaps = document.body.classList.contains('card-mode')
+            ? ['full', 'half', 'peek'] : ['full', 'peek'];
           let best = 'full', bestD = Infinity;
-          for (const k of ['full', 'half', 'peek']) {
+          for (const k of snaps) {
             const d = Math.abs(o[k] - projected);
             if (d < bestD) { bestD = d; best = k; }
           }
