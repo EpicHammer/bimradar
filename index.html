@@ -454,6 +454,32 @@
       padding: .28rem .75rem; cursor: pointer; min-height: 36px; }
     .favbtn[aria-pressed="true"] { border-color: #e8b13c; color: #e8b13c; }
 
+    /* place cards (landmarks + stops): header, actions, getting-there board */
+    .lmcard .lmkind { font-size: .66rem; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--accent); margin-bottom: .2rem; }
+    .lmcard b { font-size: 1.12rem; line-height: 1.25; }
+    .lmsub { margin-top: 2px; color: var(--muted); font-size: .74rem; letter-spacing: .02em; }
+    .lmcard .story { margin-top: 7px; color: var(--muted); font-size: .84rem; line-height: 1.5; }
+    .cardactions { display: flex; align-items: center; gap: .5rem; margin-top: .75rem; flex-wrap: wrap; }
+    .cardactions .favbtn { margin: 0; }
+    .actbtn { display: inline-flex; align-items: center; gap: .4rem; border: 0;
+      border-radius: 999px; padding: .45rem 1rem; cursor: pointer; font: inherit;
+      font-size: .84rem; font-weight: 700; color: #0b1220; min-height: 40px;
+      background: linear-gradient(180deg,
+        color-mix(in srgb, var(--accent) 86%, #fff) 0%,
+        var(--accent) 55%,
+        color-mix(in srgb, var(--accent) 84%, #000) 100%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.28),
+                  0 3px 10px color-mix(in srgb, var(--accent) 30%, transparent);
+      transition: transform .15s ease; }
+    .actbtn:active { transform: scale(.96); }
+    .actbtn svg { width: 14px; height: 14px; }
+    .getthere { margin-top: .85rem; border-top: 1px solid var(--line); padding-top: .65rem; }
+    .gtstop { display: flex; align-items: center; gap: .5rem; width: 100%; border: 0;
+      background: transparent; padding: .15rem 0 .45rem; cursor: pointer; font: inherit;
+      color: var(--fg); font-weight: 650; font-size: .9rem; text-align: left; min-height: 40px; }
+    .gtstop .gd { color: var(--muted); font-weight: 500; font-size: .78rem; margin-left: auto; }
+
     /* locate FAB: pulse while waiting for the first GPS fix */
     @keyframes fabwait { 50% { opacity: .35; } }
     .tbtn.busy svg { animation: fabwait 1s ease-in-out infinite; }
@@ -2580,7 +2606,14 @@
       };
       setStar(favIdx(f.lid) >= 0);
       star.addEventListener('click', () => setStar(toggleFav(f)));
-      box.append(h, star, document.createTextNode('Loading departures…'));
+      const acts = document.createElement('div');
+      acts.className = 'cardactions';
+      const rb = document.createElement('button');
+      rb.className = 'actbtn';
+      rb.innerHTML = ICON_WALK + ' Route here';
+      rb.addEventListener('click', () => setTripTo({ name: f.name, lat: f.lat, lng: f.lng, lid: f.lid }));
+      acts.append(rb, star);
+      box.append(h, acts, document.createTextNode('Loading departures…'));
       presentCard(box, { lat: f.lat, lng: f.lng });
       try {
         const res = await hafas('StationBoard', { type: 'DEP', stbLoc: { lid: f.lid }, maxJny: 8 });
@@ -2600,9 +2633,9 @@
           row.append(tm, ln, document.createTextNode(j.dirTxt || ''));
           rows.appendChild(row);
         }
-        box.replaceChildren(h, star, rows.children.length ? rows : document.createTextNode('No departures right now.'));
+        box.replaceChildren(h, acts, rows.children.length ? rows : document.createTextNode('No departures right now.'));
       } catch (e) {
-        box.replaceChildren(h, star, document.createTextNode('Departures unavailable.'));
+        box.replaceChildren(h, acts, document.createTextNode('Departures unavailable.'));
       }
     }
 
@@ -3140,15 +3173,99 @@
       }
       return null;
     }
+    // fill the destination and jump into the planner — the "Directions" tap
+    // every map app has
+    function setTripTo(dest) {   // {name, lat, lng, lid?}
+      trip.to = dest.lid ? { lid: dest.lid, name: dest.name }
+        : { crd: { x: Math.round(dest.lng * 1e6), y: Math.round(dest.lat * 1e6) }, name: dest.name };
+      $('to').value = dest.name;
+      dropPin('to', { lat: dest.lat, lng: dest.lng }, dest.name);
+      setArmed(null);
+      updateClearBtn();
+      info.close();
+      closeCard();
+      setSheet('full');
+      if (!trip.from) setTimeout(() => $('from').focus(), 380);
+    }
     function openLandmark(L, part, lngLat) {
       const node = document.createElement('div');
-      node.className = 'iw';
+      node.className = 'iw lmcard';
       const title = (part && part.n) || L.name;
-      const text = (part && part.i) || L.info;
-      node.innerHTML = '<b>' + esc(title) + '</b>' +
-        ((part && part.n) ? '<div style="margin-top:2px;color:var(--muted);font-size:.72rem;letter-spacing:.02em">' + esc(L.name) + '</div>' : '') +
-        '<div style="margin-top:5px;color:var(--muted);font-size:.82rem;line-height:1.45;max-width:240px">' + esc(text) + '</div>';
+      const kind = document.createElement('div');
+      kind.className = 'lmkind'; kind.textContent = 'Landmark';
+      const h = document.createElement('b'); h.textContent = title;
+      node.append(kind, h);
+      if (part && part.n) {
+        const sub = document.createElement('div');
+        sub.className = 'lmsub'; sub.textContent = L.name;
+        node.appendChild(sub);
+      }
+      const story = document.createElement('div');
+      story.className = 'story'; story.textContent = (part && part.i) || L.info;
+      node.appendChild(story);
+      const acts = document.createElement('div');
+      acts.className = 'cardactions';
+      const rb = document.createElement('button');
+      rb.className = 'actbtn';
+      rb.innerHTML = ICON_WALK + ' Route here';
+      rb.addEventListener('click', () => setTripTo({ name: title, lat: L.lat, lng: L.lng }));
+      acts.appendChild(rb);
+      node.appendChild(acts);
+      const gt = document.createElement('div');
+      node.appendChild(gt);
       presentCard(node, lngLat);
+      fillGetThere(gt, L.lat, L.lng);
+    }
+    // nearest stop + its next departures: how you actually GET to the building
+    async function fillGetThere(slot, lat, lng) {
+      try {
+        const res = await hafas('LocGeoPos', {
+          ring: { cCrd: { x: Math.round(lng * 1e6), y: Math.round(lat * 1e6) }, maxDist: 450, minDist: 0 },
+          getStops: true, getPOIs: false, maxLoc: 1
+        });
+        const near = (res.locL || []).find(l => l.type === 'S' && l.crd);
+        if (!near) return;
+        const nlat = near.crd.y / 1e6, nlng = near.crd.x / 1e6;
+        const dist = Math.round(metresBetween({ lat, lng }, { lat: nlat, lng: nlng }));
+        const isTram = !!(near.pCls & 16);
+        const sb = await hafas('StationBoard', { type: 'DEP', stbLoc: { lid: near.lid }, maxJny: 3 });
+        const prodL = (sb.common && sb.common.prodL) || [];
+        const box = document.createElement('div');
+        box.className = 'getthere';
+        const head = document.createElement('div');
+        head.className = 'sechead'; head.textContent = 'Getting there';
+        const srow = document.createElement('button');
+        srow.className = 'gtstop';
+        const badge = document.createElement('span');
+        badge.innerHTML =
+          '<svg viewBox="0 0 18 18" aria-hidden="true" style="width:20px;height:20px;display:block">' +
+            '<rect x="1.6" y="1.6" width="14.8" height="14.8" rx="4.6" fill="' + (isTram ? cssv('--tram') : '#5b6472') + '" stroke="#ffffff" stroke-width="2"/>' +
+            '<rect x="5.9" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
+            '<rect x="10.2" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
+            '<rect x="5.9" y="8.1" width="6.2" height="1.9" fill="#ffffff"/></svg>';
+        const nm = document.createElement('span'); nm.textContent = shortStop(near.name);
+        const gd = document.createElement('span');
+        gd.className = 'gd'; gd.textContent = dist + ' m · ' + Math.max(1, Math.round(dist * 1.3 / 80)) + '′ walk';
+        srow.append(badge, nm, gd);
+        srow.addEventListener('click', () =>
+          openStopData({ lid: near.lid, name: shortStop(near.name), tram: isTram, lat: nlat, lng: nlng }));
+        const rows = document.createElement('div'); rows.className = 'stops';
+        for (const j of (sb.jnyL || [])) {
+          const prod = prodL[j.prodX] || {};
+          const st = j.stbStop || {};
+          const row = document.createElement('div'); row.className = 'strow';
+          const tm = document.createElement('span');
+          tm.className = 'tm' + (st.dTimeR ? ' rt' : '');
+          tm.textContent = hafasTime(st.dTimeR || st.dTimeS) || '';
+          const ln = document.createElement('span');
+          ln.className = 'ln sm'; ln.style.background = vehColor(kindOf(prod), lineName(prod));
+          ln.textContent = lineName(prod);
+          row.append(tm, ln, document.createTextNode(j.dirTxt || ''));
+          rows.appendChild(row);
+        }
+        box.append(head, srow, rows);
+        slot.replaceChildren(box);
+      } catch (e) { /* the story card stands alone */ }
     }
 
     let occT = 0, occPend = null;
