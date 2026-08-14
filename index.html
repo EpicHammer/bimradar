@@ -176,6 +176,12 @@
       font-weight: 650; padding: 0 .3rem .55rem 0; cursor: pointer; }
     .cardback svg { width: 17px; height: 17px; }
     #cardbody .iw { background: transparent; padding: 0; }
+    .followbtn { display: inline-flex; align-items: center; gap: .3rem; margin-top: .5rem;
+      border: 1px solid var(--line); border-radius: 999px;
+      background: color-mix(in srgb, var(--accent) 8%, var(--card)); color: var(--fg);
+      font: inherit; font-size: .8rem; font-weight: 600; padding: .28rem .75rem; cursor: pointer;
+      transition: background .15s ease, color .15s ease, border-color .15s ease; }
+    .followbtn[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
 
     .tripform { display: grid; gap: .5rem; }
     .fieldwrap { position: relative; }
@@ -354,6 +360,9 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3"/></svg>
     </button>
     <button class="tbtn" id="fab3d" title="3D view" aria-pressed="false" style="font-size:.72rem;font-weight:700">3D</button>
+    <button class="tbtn" id="fabcompass" title="Point north" hidden>
+      <svg viewBox="0 0 24 24" style="width:20px;height:20px"><path d="M12 3l3.4 9H8.6z" fill="#d63b30"/><path d="M12 21l-3.4-9h6.8z" fill="currentColor" opacity=".75"/></svg>
+    </button>
     <button class="tbtn" id="fabtheme" title="Light/dark"></button>
   </div>
   <main>
@@ -521,6 +530,7 @@
     let LINES = {};
     fetch('./lines.json').then(r => r.ok ? r.json() : {}).then(d => { LINES = d; }).catch(() => {});
     const MOBILE_MQ = window.matchMedia('(max-width: 44rem)');
+    let followJid = null;         // camera chases this vehicle while set
     const vehicles = new Map();   // jid -> {marker, kind, line, dir, from, to, t0, dur, head}
     const LMK_OCC = [];           // landmark occluders, filled once by the 3D layer's onAdd
     const filters = { tram: true, bus: true, regio: true, night: true, train: true };
@@ -2088,6 +2098,17 @@
         map.setLayoutProperty('uhrturm', 'visibility', (pitched && !modeled) ? 'visible' : 'none');
       updateOcclusion();   // re-evaluate ghosting when 3D toggles on/off
     }
+    function syncRotation() {
+      if (!map) return;
+      if (pitched) {
+        if (map.touchZoomRotate) map.touchZoomRotate.enableRotation();
+        if (map.dragRotate) map.dragRotate.enable();
+      } else {
+        if (map.touchZoomRotate) map.touchZoomRotate.disableRotation();
+        if (map.dragRotate) map.dragRotate.disable();
+        map.easeTo({ bearing: 0, duration: 400 });
+      }
+    }
     function apply3D() {
       if (!map) return;
       refresh3D();
@@ -2116,9 +2137,16 @@
         dragRotate: false, pitchWithRotate: false, maxPitch: 45
       });
       if (map.touchZoomRotate) map.touchZoomRotate.disableRotation();
+      map.on('rotate', () => {
+        const brg = map.getBearing();
+        $('fabcompass').hidden = Math.abs(brg) < 1;
+        const sv = $('fabcompass').querySelector('svg');
+        if (sv) sv.style.transform = 'rotate(' + (-brg) + 'deg)';
+      });
       window.__map = map;                        // debug/testing hook
       map.on('error', () => {});                 // tile/style hiccups shouldn't reach the UI
       info = makeInfo();
+      map.on('dragstart', () => { meSetFollow(false); setFollowVehicle(null); });
       map.on('load', () => {
         map.on('moveend', () => {
           poll(); loadStops(); updateOcclusion();
@@ -2766,7 +2794,22 @@
           }
         }
       }
+      // chase cam: glue the centre to the followed vehicle's glide
+      if (followJid) {
+        const fv = vehicles.get(followJid);
+        if (fv && fv.marker.getMap()) {
+          const p2 = fv.marker.getPosition();
+          map.jumpTo({ center: [p2.lng, p2.lat] });
+        } else if (fv === undefined) { setFollowVehicle(null); }
+      }
       requestAnimationFrame(animate);
+    }
+
+    function setFollowVehicle(jid) {
+      followJid = jid;
+      if (jid) { meFollow = false; $('fablocate').setAttribute('aria-pressed', 'false'); }
+      document.querySelectorAll('.followbtn').forEach(bn =>
+        bn.setAttribute('aria-pressed', String(!!jid && bn.dataset.jid === jid)));
     }
 
     function applyFilter() {
@@ -3034,6 +3077,12 @@
         d.className = 'dirn'; d.textContent = 'Richtung ' + dirTxt;
         box.appendChild(d);
       }
+      const fb = document.createElement('button');
+      fb.className = 'followbtn'; fb.dataset.jid = v.jid;
+      fb.setAttribute('aria-pressed', String(followJid === v.jid));
+      fb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px"><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/><path d="M12 3v3.5M12 17.5V21M3 12h3.5M17.5 12H21"/></svg> Follow';
+      fb.addEventListener('click', () => setFollowVehicle(followJid === v.jid ? null : v.jid));
+      box.appendChild(fb);
       if (v.nextStop) {
         const nx = document.createElement('div');
         nx.className = 'next';
@@ -3529,6 +3578,7 @@
       pitched = !pitched;
       try { localStorage.setItem('bm_3d', pitched ? '1' : '0'); } catch (e) {}
       apply3D();
+      syncRotation();
     });
     $('themebtn').addEventListener('click', () => {
       const next = isDark() ? 'light' : 'dark';
@@ -3658,19 +3708,41 @@
     // floating map buttons (phone): 3D mirrors the sheet's toggle; locate-me
     // drops a blue dot at the GPS fix and flies there.
     $('fab3d').addEventListener('click', () => $('btn3d').click());
+    // compass: appears whenever north isn't up; tap to reset
+    $('fabcompass').addEventListener('click', () => map && map.easeTo({ bearing: 0, duration: 500 }));
     $('fabtheme').addEventListener('click', () => $('themebtn').click());
-    let meMarker = null;
+    // Follow-me: first tap starts following (blue dot + camera glued to you),
+    // panning the map keeps the dot but releases the camera, tapping again
+    // re-centres. The GPS watch pauses when the tab is hidden.
+    let meMarker = null, meWatch = null, meFollow = false;
+    function meDot(ll) {
+      if (!meMarker) {
+        const el2 = document.createElement('div');
+        el2.className = 'medot'; el2.innerHTML = '<i></i>';
+        meMarker = new Mk({ map, position: ll, element: el2, zIndex: 80 });
+      } else { meMarker.setPosition(ll); meMarker.setMap(map); }
+    }
+    function meStartWatch() {
+      if (meWatch != null || !navigator.geolocation) return;
+      meWatch = navigator.geolocation.watchPosition(pos => {
+        const ll = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        meDot(ll);
+        if (meFollow && map) map.easeTo({ center: [ll.lng, ll.lat],
+          zoom: Math.max(map.getZoom(), 15.8), duration: 700 });
+      }, () => { meSetFollow(false); }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 2000 });
+    }
+    function meSetFollow(on) {
+      meFollow = on;
+      $('fablocate').setAttribute('aria-pressed', String(on));
+      if (on) { followJid = null; meStartWatch(); }
+    }
     $('fablocate').addEventListener('click', () => {
       if (!navigator.geolocation || !map) return;
-      navigator.geolocation.getCurrentPosition(pos => {
-        const ll = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        if (!meMarker) {
-          const el2 = document.createElement('div');
-          el2.className = 'medot'; el2.innerHTML = '<i></i>';
-          meMarker = new Mk({ map, position: ll, element: el2, zIndex: 80 });
-        } else { meMarker.setPosition(ll); meMarker.setMap(map); }
-        map.flyTo({ center: [ll.lng, ll.lat], zoom: Math.max(map.getZoom(), 15.8), duration: 900 });
-      }, () => {}, { enableHighAccuracy: true, timeout: 8000 });
+      meSetFollow(!meFollow);
+      if (meFollow && meMarker) {
+        const ll = meMarker.getPosition();
+        map.easeTo({ center: [ll.lng, ll.lat], zoom: Math.max(map.getZoom(), 15.8), duration: 700 });
+      }
     });
 
     // iOS: the keyboard overlays the fixed sheet without resizing the layout —
@@ -3698,8 +3770,13 @@
     }
 
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) { clearInterval(pollTimer); pollTimer = null; }
-      else if (map && !pollTimer) { poll(); pollTimer = setInterval(poll, 7000); }
+      if (document.hidden) {
+        clearInterval(pollTimer); pollTimer = null;
+        if (meWatch != null) { try { navigator.geolocation.clearWatch(meWatch); } catch (e) {} meWatch = null; }
+      } else if (map && !pollTimer) {
+        poll(); pollTimer = setInterval(poll, 7000);
+        if (meFollow) meStartWatch();
+      }
     });
     // Open on the map, not on the panel: on phones the sheet starts collapsed to its
     // peek stub. Desktop keeps it open — there it sits beside the map, not over it.
