@@ -176,7 +176,8 @@
     #cardpane { display: none; }
     body.card-mode #cardpane { display: block; }
     body.card-mode .tripform, body.card-mode #results, body.card-mode #livetxt,
-    body.card-mode #triperr, body.card-mode #err, body.card-mode #favrow { display: none; }
+    body.card-mode #triperr, body.card-mode #err, body.card-mode #favrow,
+    body.card-mode #nearrow { display: none; }
     .cardback { display: inline-flex; align-items: center; gap: .25rem; border: 0;
       background: transparent; color: var(--accent); font: inherit; font-size: .92rem;
       font-weight: 650; padding: 0 .3rem .55rem 0; cursor: pointer; }
@@ -479,6 +480,25 @@
       background: transparent; padding: .15rem 0 .45rem; cursor: pointer; font: inherit;
       color: var(--fg); font-weight: 650; font-size: .9rem; text-align: left; min-height: 40px; }
     .gtstop .gd { color: var(--muted); font-weight: 500; font-size: .78rem; margin-left: auto; }
+    .gtbadge svg { width: 20px; height: 20px; display: block; }
+
+    /* departure rows + nearby section (outside .iw cards too) */
+    .strow { display: flex; gap: .5rem; font-size: .82rem; align-items: baseline; }
+    .strow .dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .strow .clk { color: var(--ink-3); font-size: .72rem; font-variant-numeric: tabular-nums; }
+    .tm { font-variant-numeric: tabular-nums; min-width: 2.8em; color: var(--muted); }
+    .tm.rt { color: var(--ok); font-weight: 650; }
+    .ln { display: inline-block; color: #fff; font-weight: 700; border-radius: 6px; padding: 0 .4rem; }
+    .ln.sm { font-size: .78rem; padding: 0 .35rem; min-width: 1.9em; text-align: center; box-sizing: border-box; }
+    #nearrow { display: block; margin: .1rem 0 .6rem; }
+    #nearrow[hidden] { display: none; }
+    .nearblock { margin-bottom: .6rem; }
+    .nearask { display: inline-flex; align-items: center; gap: .45rem; min-height: 40px;
+      border: 1px solid var(--line); border-radius: 999px; cursor: pointer;
+      background: color-mix(in srgb, var(--card) 80%, transparent); color: var(--fg);
+      font: inherit; font-size: .82rem; font-weight: 600; padding: .4rem .95rem; }
+    .nearask svg { width: 15px; height: 15px; }
+    .nearask:disabled { opacity: .6; }
 
     /* locate FAB: pulse while waiting for the first GPS fix */
     @keyframes fabwait { 50% { opacity: .35; } }
@@ -536,6 +556,7 @@
 
     <p class="err" id="err" aria-live="polite" hidden></p>
 
+    <div id="nearrow" hidden></div>
     <div id="favrow" hidden></div>
     <div class="tripform">
       <div class="planner">
@@ -2324,6 +2345,7 @@
         if (!pollTimer) pollTimer = setInterval(poll, 7000);
         requestAnimationFrame(animate);
         handleShortcut();
+        refreshNearby();
       });
     }
 
@@ -2619,20 +2641,7 @@
         const res = await hafas('StationBoard', { type: 'DEP', stbLoc: { lid: f.lid }, maxJny: 8 });
         const prodL = (res.common && res.common.prodL) || [];
         const rows = document.createElement('div'); rows.className = 'stops';
-        for (const j of (res.jnyL || [])) {
-          const prod = prodL[j.prodX] || {};
-          const st = j.stbStop || {};
-          const t = hafasTime(st.dTimeR || st.dTimeS);
-          const kind = kindOf(prod);
-          const row = document.createElement('div'); row.className = 'strow';
-          const tm = document.createElement('span');
-          tm.className = 'tm' + (st.dTimeR ? ' rt' : ''); tm.textContent = t || '';
-          const ln = document.createElement('span');
-          ln.className = 'ln sm'; ln.style.background = vehColor(kind, lineName(prod));
-          ln.textContent = lineName(prod);
-          row.append(tm, ln, document.createTextNode(j.dirTxt || ''));
-          rows.appendChild(row);
-        }
+        for (const j of (res.jnyL || [])) rows.appendChild(depRow(prodL, j));
         box.replaceChildren(h, acts, rows.children.length ? rows : document.createTextNode('No departures right now.'));
       } catch (e) {
         box.replaceChildren(h, acts, document.createTextNode('Departures unavailable.'));
@@ -2666,13 +2675,7 @@
           badge.className = 'hbadge';
           // the same Haltestelle "H" badge the map uses — red for tram stops
           const col = f.tram ? cssv('--tram') : '#5b6472';
-          badge.innerHTML =
-            '<svg viewBox="0 0 18 18" aria-hidden="true">' +
-              '<rect x="1.6" y="1.6" width="14.8" height="14.8" rx="4.6" fill="' + col + '" stroke="#ffffff" stroke-width="2"/>' +
-              '<rect x="5.9" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
-              '<rect x="10.2" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
-              '<rect x="5.9" y="8.1" width="6.2" height="1.9" fill="#ffffff"/>' +
-            '</svg>';
+          badge.innerHTML = hBadgeSVG(col);
           const lbl = document.createElement('span');
           lbl.className = 'lbl'; lbl.textContent = shortStop(f.name);
           b.append(badge, lbl);
@@ -2699,8 +2702,8 @@
         const j = (res.jnyL || [])[0];
         if (j) {
           const st = j.stbStop || {};
-          const t = hafasTime(st.dTimeR || st.dTimeS);
-          favDep.txt = '★ ' + f.name + ': ' + lineName(prodL[j.prodX] || {}) + (t ? ' ' + t : '');
+          const t = st.dTimeR || st.dTimeS;
+          favDep.txt = '★ ' + f.name + ': ' + lineName(prodL[j.prodX] || {}) + (t ? ' ' + fmtDep(t) : '');
         } else favDep.txt = '';
         favDep.t = Date.now();
       } catch (e) { favDep.t = Date.now(); }
@@ -2769,6 +2772,50 @@
       if (!t) return null;
       const s = String(t).length === 8 ? String(t).slice(2) : String(t);
       return s.slice(0, 2) + ':' + s.slice(2, 4);
+    }
+    // minutes from now until a HAFAS time (midnight-wrap tolerant)
+    function minsUntil(t) {
+      if (!t) return null;
+      const now = new Date();
+      let d = hafasMins(t) % 1440 - (now.getHours() * 60 + now.getMinutes());
+      if (d < -60) d += 1440;
+      return d;
+    }
+    // what you want at the stop: "now" / "4'" — clock time only when far off
+    function fmtDep(t) {
+      const d = minsUntil(t);
+      if (d == null) return '';
+      if (d <= 0) return 'now';
+      if (d < 60) return d + '′';
+      return hafasTime(t);
+    }
+    const hBadgeSVG = col =>
+      '<svg viewBox="0 0 18 18" aria-hidden="true">' +
+        '<rect x="1.6" y="1.6" width="14.8" height="14.8" rx="4.6" fill="' + col + '" stroke="#ffffff" stroke-width="2"/>' +
+        '<rect x="5.9" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
+        '<rect x="10.2" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
+        '<rect x="5.9" y="8.1" width="6.2" height="1.9" fill="#ffffff"/>' +
+      '</svg>';
+    // one departure row, shared by stop cards, getting-there and nearby:
+    // relative time (kept fresh by the 30 s repainter), badge, direction, clock
+    function depRow(prodL, j) {
+      const prod = prodL[j.prodX] || {};
+      const st = j.stbStop || {};
+      const t = st.dTimeR || st.dTimeS;
+      const row = document.createElement('div'); row.className = 'strow';
+      const tm = document.createElement('span');
+      tm.className = 'tm' + (st.dTimeR ? ' rt' : '');
+      tm.textContent = fmtDep(t);
+      if (t) tm.dataset.t = String(t);
+      const ln = document.createElement('span');
+      ln.className = 'ln sm'; ln.style.background = vehColor(kindOf(prod), lineName(prod));
+      ln.textContent = lineName(prod);
+      const dir = document.createElement('span');
+      dir.className = 'dir'; dir.textContent = j.dirTxt || '';
+      const clk = document.createElement('span');
+      clk.className = 'clk'; clk.textContent = hafasTime(t) || '';
+      row.append(tm, ln, dir, clk);
+      return row;
     }
     const shortStop = n => (n || '').replace(/^Graz /, '');
     // HAFAS times are [dd]HHMMSS; compare the live prognosis against the schedule
@@ -3237,12 +3284,8 @@
         const srow = document.createElement('button');
         srow.className = 'gtstop';
         const badge = document.createElement('span');
-        badge.innerHTML =
-          '<svg viewBox="0 0 18 18" aria-hidden="true" style="width:20px;height:20px;display:block">' +
-            '<rect x="1.6" y="1.6" width="14.8" height="14.8" rx="4.6" fill="' + (isTram ? cssv('--tram') : '#5b6472') + '" stroke="#ffffff" stroke-width="2"/>' +
-            '<rect x="5.9" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
-            '<rect x="10.2" y="4.8" width="1.9" height="8.4" fill="#ffffff"/>' +
-            '<rect x="5.9" y="8.1" width="6.2" height="1.9" fill="#ffffff"/></svg>';
+        badge.className = 'gtbadge';
+        badge.innerHTML = hBadgeSVG(isTram ? cssv('--tram') : '#5b6472');
         const nm = document.createElement('span'); nm.textContent = shortStop(near.name);
         const gd = document.createElement('span');
         gd.className = 'gd'; gd.textContent = dist + ' m · ' + Math.max(1, Math.round(dist * 1.3 / 80)) + '′ walk';
@@ -3250,22 +3293,117 @@
         srow.addEventListener('click', () =>
           openStopData({ lid: near.lid, name: shortStop(near.name), tram: isTram, lat: nlat, lng: nlng }));
         const rows = document.createElement('div'); rows.className = 'stops';
-        for (const j of (sb.jnyL || [])) {
-          const prod = prodL[j.prodX] || {};
-          const st = j.stbStop || {};
-          const row = document.createElement('div'); row.className = 'strow';
-          const tm = document.createElement('span');
-          tm.className = 'tm' + (st.dTimeR ? ' rt' : '');
-          tm.textContent = hafasTime(st.dTimeR || st.dTimeS) || '';
-          const ln = document.createElement('span');
-          ln.className = 'ln sm'; ln.style.background = vehColor(kindOf(prod), lineName(prod));
-          ln.textContent = lineName(prod);
-          row.append(tm, ln, document.createTextNode(j.dirTxt || ''));
-          rows.appendChild(row);
-        }
+        for (const j of (sb.jnyL || [])) rows.appendChild(depRow(prodL, j));
         box.append(head, srow, rows);
         slot.replaceChildren(box);
       } catch (e) { /* the story card stands alone */ }
+    }
+
+    // ---------- nearby departures ----------
+    // The glance answer: the closest stops and what leaves next. Location is
+    // used only if already granted (or the user taps the ask button) — the
+    // app never opens with a permission dialog.
+    const NEAR = { t: 0, busy: false };
+    async function refreshNearby(force) {
+      const row = $('nearrow');
+      if (NEAR.busy || document.hidden || !map) return;
+      if (document.body.classList.contains('panel-peek') ||
+          document.body.classList.contains('card-mode')) return;
+      if (!force && Date.now() - NEAR.t < 60000) return;
+      let pos = meMarker ? meMarker.getPosition() : null;
+      if (!pos) {
+        let state = 'prompt';
+        try { state = (await navigator.permissions.query({ name: 'geolocation' })).state; } catch (e) {}
+        if (state === 'denied') { row.hidden = true; return; }
+        if (state !== 'granted') { if (!row.querySelector('.nearask')) renderNearbyAsk(); return; }
+        if (!navigator.geolocation) return;
+        pos = await new Promise(res2 => navigator.geolocation.getCurrentPosition(
+          p => res2({ lat: p.coords.latitude, lng: p.coords.longitude }), () => res2(null),
+          { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 }));
+        if (!pos) return;
+      }
+      NEAR.busy = true;
+      try {
+        const res = await hafas('LocGeoPos', {
+          ring: { cCrd: { x: Math.round(pos.lng * 1e6), y: Math.round(pos.lat * 1e6) }, maxDist: 700, minDist: 0 },
+          getStops: true, getPOIs: false, maxLoc: 12
+        });
+        // one entry per station, not per platform (same grouping as the map badges)
+        const groups = new Map();
+        for (const l of (res.locL || [])) {
+          if (l.type !== 'S' || !l.crd || !l.lid) continue;
+          const gid = (l.globalIdL && l.globalIdL[0] && l.globalIdL[0].id) || l.name;
+          const key = String(gid).split(':').slice(0, 3).join(':');
+          const g = groups.get(key);
+          if (!g) groups.set(key, { loc: l, tram: !!(l.pCls & 16) });
+          else g.tram = g.tram || !!(l.pCls & 16);
+        }
+        const near2 = [...groups.values()]
+          .map(g => ({ ...g, d: metresBetween(pos, { lat: g.loc.crd.y / 1e6, lng: g.loc.crd.x / 1e6 }) }))
+          .sort((a, b) => a.d - b.d).slice(0, 2);
+        const blocks = [];
+        for (const g of near2) {
+          const sb = await hafas('StationBoard', { type: 'DEP', stbLoc: { lid: g.loc.lid }, maxJny: 6 });
+          const prodL = (sb.common && sb.common.prodL) || [];
+          const block = document.createElement('div');
+          block.className = 'nearblock';
+          const srow = document.createElement('button');
+          srow.className = 'gtstop';
+          const badge = document.createElement('span');
+          badge.className = 'gtbadge';
+          badge.innerHTML = hBadgeSVG(g.tram ? cssv('--tram') : '#5b6472');
+          const nm = document.createElement('span'); nm.textContent = shortStop(g.loc.name);
+          const gd = document.createElement('span');
+          gd.className = 'gd'; gd.textContent = Math.round(g.d) + ' m';
+          srow.append(badge, nm, gd);
+          const fdata = { lid: g.loc.lid, name: shortStop(g.loc.name), tram: g.tram,
+            lat: g.loc.crd.y / 1e6, lng: g.loc.crd.x / 1e6 };
+          srow.addEventListener('click', () => openStopData(fdata));
+          const rows = document.createElement('div'); rows.className = 'stops';
+          const seenLine = new Set();
+          for (const j of (sb.jnyL || [])) {
+            const k2 = lineName((sb.common.prodL || [])[j.prodX] || {}) + '|' + (j.dirTxt || '');
+            if (seenLine.has(k2)) continue;
+            seenLine.add(k2);
+            rows.appendChild(depRow(prodL, j));
+            if (rows.children.length >= 3) break;
+          }
+          block.append(srow, rows);
+          blocks.push(block);
+        }
+        if (blocks.length) {
+          const head = document.createElement('div');
+          head.className = 'sechead'; head.textContent = 'Nearby';
+          row.replaceChildren(head, ...blocks);
+          row.hidden = false;
+        }
+        NEAR.t = Date.now();
+      } catch (e) { /* nearby is a bonus layer */ }
+      finally { NEAR.busy = false; }
+    }
+    function renderNearbyAsk() {
+      const row = $('nearrow');
+      const head = document.createElement('div');
+      head.className = 'sechead'; head.textContent = 'Nearby';
+      const b = document.createElement('button');
+      b.className = 'nearask';
+      b.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3"/></svg>' +
+        ' Show departures near me';
+      b.addEventListener('click', () => {
+        if (!navigator.geolocation) return;
+        b.disabled = true;
+        navigator.geolocation.getCurrentPosition(p => {
+          meDot({ lat: p.coords.latitude, lng: p.coords.longitude });
+          row.replaceChildren();
+          refreshNearby(true);
+        }, () => {
+          row.hidden = true;
+          toast('Location unavailable — check the site permission');
+        }, { enableHighAccuracy: false, timeout: 10000 });
+      });
+      row.replaceChildren(head, b);
+      row.hidden = false;
     }
 
     let occT = 0, occPend = null;
@@ -4032,6 +4170,7 @@
       if (prev !== state && isMobile() && navigator.vibrate) navigator.vibrate(8);
       if (state !== 'full') window.scrollTo(0, 0);
       updatePeek();
+      if (state === 'full') refreshNearby();
       if (c) setTimeout(() => { if (map) map.setCenter(c); }, 320);
     }
     function sheetState() {
@@ -4244,6 +4383,13 @@
       updatePeek();
     }
     renderFavs();
+    // relative departure labels tick down; nearby refreshes on a slow cadence
+    // (both no-ops while the tab is hidden or nothing is rendered)
+    setInterval(() => {
+      if (document.hidden) return;
+      for (const el of document.querySelectorAll('.tm[data-t]')) el.textContent = fmtDep(el.dataset.t);
+    }, 30000);
+    setInterval(() => refreshNearby(), 60000);
     // rotating a phone across the breakpoint must not strand the UI in the
     // other mode's body classes (card pane in the sidebar, orphaned sheet state)
     MOBILE_MQ.addEventListener('change', e => {
