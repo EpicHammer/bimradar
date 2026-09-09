@@ -2902,11 +2902,18 @@
           // smoothly towards it. Standing still, the feed's heading is the target.
           const cur = basePos(v, now);
           if (cur.lat === to.lat && cur.lng === to.lng && feedHead != null) v.targetHead = feedHead;
+          // A jump no vehicle covers in one poll cycle means the tab was hidden
+          // (polling pauses) or HAFAS relocated the journey — gliding it would
+          // read as a Bim sprinting across town to catch up. Teleport instead.
+          const jump = metresBetween(cur, to);
+          const snap = jump > (kind === 'train' ? 600 : 250);
           // the proxy ships the street geometry between the two reports (j.pth):
           // glide along it instead of the straight chord, which cuts corners
           // through building blocks. Without pth the chord is the fallback.
-          v.route = buildGlidePath(cur, j.pth, to);
-          v.from = cur; v.to = to; v.t0 = now; v.dur = REDUCED ? 0 : 7000;
+          v.route = snap ? null : buildGlidePath(cur, j.pth, to);
+          v.from = snap ? to : cur; v.to = to; v.t0 = now;
+          v.dur = (REDUCED || snap) ? 0 : 7000;
+          if (snap && feedHead != null) { v.head = feedHead; v.targetHead = feedHead; }
           v.kind = kind; v.line = line; v.dir = dir; Object.assign(v, meta);
           v.marker.setIcon(vIcon(v.kind, v.head, v.line));
         }
