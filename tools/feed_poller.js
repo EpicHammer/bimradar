@@ -18,20 +18,31 @@ current report as "pth": [[y,x],...] microdegree intermediate vertices.
 The client walks that path instead of the chord. No polyline yet (cache
 warming) simply means no "pth" — the client falls back to the straight glide.
 
+Drive plan: the same JourneyDetails call also returns the journey's RT
+passlist. Each stop is projected onto the polyline, and every vehicle ships
+"seg" (the polyline slice from its last passed stop to the stop after next,
+[[y,x] microdeg]), "st" (stops in that slice: {d: metres along seg, a/p:
+raw HAFAS arrive/depart times, RT when available}) and "sp" (the snapped
+position, metres along seg). The client animates BY CLOCK along the plan —
+accelerate, brake, dwell — instead of trailing the 5 s reports. Times stay
+raw HAFAS strings so the client's local clock does the timezone math.
+
 Payload: {"t": <epoch ms written>, "rect": {...}, "res": <raw HAFAS res>}
-"res" is exactly what HAFAS JourneyGeoPos returns (plus "pth" per journey),
-so the client ingests it with the same code path it uses for direct queries.
+"res" is exactly what HAFAS JourneyGeoPos returns (plus "pth"/"seg"/"st"/
+"sp" per journey), so the client ingests it with the same code path it
+uses for direct queries.
 
 Zero npm dependencies — global fetch + node:fs only (Node >= 18). */
 'use strict';
 const fs = require('node:fs');
 
 const HAFAS_URL = 'https://verkehrsauskunft.verbundlinie.at/hamm/gate';
-const OUT = '/var/apps/eliashammer/bimradar/api/vehicles.json';
+const OUT = process.env.BM_OUT || '/var/apps/eliashammer/bimradar/api/vehicles.json';
 const POLL_S = 5;
 const DETAILS_PER_CYCLE = 14;   // polyline fetches per cycle: warms ~170 jids/min
 const POLY_RETRY_S = 300;       // a jid whose polyline fetch failed: retry after this
 const EVICT_S = 180;            // forget journeys not seen for this long
+const TT_REFRESH_S = 60;        // refetch a journey's RT passlist this often
 // Graz + surroundings; must match PROXY_RECT in index.html
 const RECT = { minLon: 15.30, maxLon: 15.60, minLat: 46.98, maxLat: 47.15 };
 
@@ -112,10 +123,32 @@ function pathBetween(prev, cur, pts) {
   return mids.map(p => [Math.round(p[0] * 1e6), Math.round(p[1] * 1e6)]).slice(0, 24);
 }
 
+/** Points of pts between route-distances a..b (endpoints interpolated), <= 48 pts. */
+function slicePoly(pts, cum, a, b) {
+  const at = d => {
+    let i = 1;
+    while (i < cum.length - 1 && cum[i] < d) i++;
+    const seg = (cum[i] - cum[i - 1]) || 1;
+    const t = Math.max(0, Math.min(1, (d - cum[i - 1]) / seg));
+    return [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t,
+            pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t];
+  };
+  const out = [at(a)];
+  for (let i = 0; i < pts.length; i++) if (cum[i] > a && cum[i] < b) out.push(pts[i]);
+  out.push(at(b));
+  if (out.length > 48) {                        // decimate evenly, keep endpoints
+    const dec = [];
+    for (let k = 0; k <= 47; k++) dec.push(out[Math.round(k * (out.length - 1) / 47)]);
+    return dec;
+  }
+  return out;
+}
+
 class PolyCache {
   constructor() {
     this.polys = new Map();     // jid -> [[lat,lng],...] | null (fetch failed)
     this.cums = new Map();      // jid -> cumulative metres along that polyline
+    this.tt = new Map();        // jid -> { stops: [{d, a, p}], at: epoch s } (RT passlist)
     this.failedAt = new Map();  // jid -> epoch s of failed fetch
     this.seen = new Map();      // jid -> epoch s last seen in feed
   }
@@ -123,13 +156,39 @@ class PolyCache {
     if (this.polys.has(jid) && this.polys.get(jid) !== null) return false;
     return Date.now() / 1000 - (this.failedAt.get(jid) || 0) > POLY_RETRY_S;
   }
+  wantTT(jid) {
+    const pts = this.polys.get(jid);
+    if (!pts || pts.length < 2) return false;   // polyline first — it anchors the stops
+    const e = this.tt.get(jid);
+    return !e || Date.now() / 1000 - e.at > TT_REFRESH_S;
+  }
   async fetch(jid) {
     try {
-      const det = await gate('JourneyDetails', { jid, getPolyline: true });
+      const det = await gate('JourneyDetails', { jid, getPolyline: true, getPasslist: true });
       const polyL = (det.common || {}).polyL || [];
       const enc = polyL.length ? polyL[0].crdEncYX : null;
-      this.polys.set(jid, enc ? decodePoly(enc) : null);
-      if (!enc) this.failedAt.set(jid, Date.now() / 1000);
+      const pts = enc ? decodePoly(enc) : null;
+      this.polys.set(jid, pts);
+      if (!enc) { this.failedAt.set(jid, Date.now() / 1000); return; }
+      const cum = cumDist(pts);
+      this.cums.set(jid, cum);
+      // project the passlist onto the polyline: each stop becomes a route
+      // distance; times stay raw HAFAS [dd]HHMMSS (RT preferred over schedule)
+      const locL = (det.common || {}).locL || [];
+      const stopL = (det.journey && det.journey.stopL) || [];
+      const stops = [];
+      let lastD = -1;
+      for (const st of stopL) {
+        const loc = locL[st.locX];
+        if (!loc || !loc.crd) continue;
+        const [i, t, dist] = project([loc.crd.y / 1e6, loc.crd.x / 1e6], pts);
+        if (dist > 120) continue;               // platform doesn't lie on this polyline
+        let d = cum[i] + t * (cum[i + 1] - cum[i]);
+        if (d < lastD) d = lastD;               // monotonic despite loop ambiguity
+        lastD = d;
+        stops.push({ d, a: st.aTimeR || st.aTimeS || null, p: st.dTimeR || st.dTimeS || null });
+      }
+      if (stops.length >= 2) this.tt.set(jid, { stops, at: Date.now() / 1000 });
     } catch (e) {
       if (!this.polys.has(jid)) this.polys.set(jid, null);
       this.failedAt.set(jid, Date.now() / 1000);
@@ -142,6 +201,7 @@ class PolyCache {
         this.seen.delete(jid);
         this.polys.delete(jid);
         this.cums.delete(jid);
+        this.tt.delete(jid);
         this.failedAt.delete(jid);
       }
     }
@@ -177,12 +237,23 @@ async function main() {
           budget--;
         }
       }
+      // leftover budget keeps the RT passlists fresh, stalest first
+      if (budget > 0) {
+        const stale = jny.filter(j => cache.wantTT(j.jid)).sort((a, b) =>
+          ((cache.tt.get(a.jid) || { at: 0 }).at) - ((cache.tt.get(b.jid) || { at: 0 }).at));
+        for (const j of stale) {
+          if (budget <= 0) break;
+          await cache.fetch(j.jid);
+          budget--;
+        }
+      }
 
       // enrich: snap reports onto the route, then ship the street path
       for (const j of jny) {
         const jid = j.jid;
         let cur = [j.pos.y / 1e6, j.pos.x / 1e6];
         const pts = cache.polys.get(jid);
+        let progNow = null;
         // HAFAS occasionally reports layover/stand coordinates off the
         // street (buses "inside buildings"). The route polyline is truth:
         // project the report onto it and publish the snapped point.
@@ -205,6 +276,7 @@ async function main() {
             j.pos.y = Math.round(cur[0] * 1e6);
             j.pos.x = Math.round(cur[1] * 1e6);
             prevProg.set(jid, prog);
+            progNow = prog;
           }
         }
         const prev = prevPos.get(jid);
@@ -213,6 +285,25 @@ async function main() {
           if (mids.length) j.pth = mids;
         }
         prevPos.set(jid, cur);
+        // drive plan: the polyline slice from the last passed stop to the stop
+        // after next, with RT times — the client animates along it BY CLOCK
+        const ttE = cache.tt.get(jid);
+        const cum2 = cache.cums.get(jid);
+        if (progNow != null && ttE && cum2 && pts) {
+          const stops = ttE.stops;
+          let i0 = 0;
+          for (let k = 0; k < stops.length; k++) { if (stops[k].d <= progNow + 25) i0 = k; else break; }
+          const i1 = Math.min(stops.length - 1, i0 + 2);
+          if (i1 > i0) {
+            const d0 = stops[i0].d, d1 = stops[i1].d;
+            const seg = slicePoly(pts, cum2, d0, d1);
+            if (seg.length >= 2 && d1 - d0 > 10) {
+              j.seg = seg.map(p2 => [Math.round(p2[0] * 1e6), Math.round(p2[1] * 1e6)]);
+              j.st = stops.slice(i0, i1 + 1).map(s => ({ d: Math.round(s.d - d0), a: s.a, p: s.p }));
+              j.sp = Math.round(Math.min(Math.max(progNow - d0, 0), d1 - d0));
+            }
+          }
+        }
       }
       for (const jid of [...prevPos.keys()]) {
         if (!cache.seen.has(jid)) { prevPos.delete(jid); prevProg.delete(jid); }

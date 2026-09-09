@@ -2917,6 +2917,17 @@
           v.kind = kind; v.line = line; v.dir = dir; Object.assign(v, meta);
           v.marker.setIcon(vIcon(v.kind, v.head, v.line));
         }
+        // attach/refresh the drive plan (both new and known vehicles); the
+        // drawn spot is re-projected into the new plan so nothing jumps
+        if (!REDUCED && j.seg && j.seg.length >= 2 && j.st && j.st.length >= 2) {
+          const mp = j.seg.map(q => ({ lat: q[0] / 1e6, lng: q[1] / 1e6 }));
+          const mc = [0];
+          for (let k = 1; k < mp.length; k++) mc.push(mc[k - 1] + metresBetween(mp[k - 1], mp[k]));
+          v.model = { pts: mp, cum: mc, total: mc[mc.length - 1], st: j.st };
+          const lp = v._lp || v.to;
+          const pr = lp ? projectOnPts(lp, mp, mc) : null;
+          v.mDrawn = pr != null ? pr : (j.sp || 0);
+        } else v.model = null;
       }
       // remove vehicles that left the viewport / feed
       for (const [jid, v] of vehicles) {
@@ -3061,11 +3072,74 @@
       const lb = el.querySelector('.vlabel');
       if (lb) lb.style.top = (vehHalf(v.kind, isDetail) * S + 6) + 'px';
     }
-    let lastScaleZoom = -1, lastPitch = -1, rafOn = false, frameNo = 0;
+    // ---------- timetable-driven motion (drive plan from the poller) ----------
+    // The poller ships seg (route slice), st (stops: distance + RT times) and
+    // sp per vehicle. Motion is then driven BY THE CLOCK against the RT times:
+    // accelerate out of a stop, brake into the next, dwell until departure.
+    // The 5 s feed only re-anchors; missing plans fall back to the old glide.
+    const secNow = () => { const n = new Date(); return n.getHours() * 3600 + n.getMinutes() * 60 + n.getSeconds() + n.getMilliseconds() / 1000; };
+    function hafasSec(t) {
+      const s2 = String(t), dd = s2.length === 8 ? +s2.slice(0, 2) : 0;
+      const b = s2.length === 8 ? s2.slice(2) : s2;
+      return dd * 86400 + (+b.slice(0, 2)) * 3600 + (+b.slice(2, 4)) * 60 + (+b.slice(4, 6));
+    }
+    // seconds from now (negative = past), midnight-wrap tolerant
+    function relSec2(t, nowS) { let d = hafasSec(t) % 86400 - nowS; if (d < -21600) d += 86400; return d; }
+    const easeSS = f => f * f * (3 - 2 * f);
+    // where the RT timetable puts the vehicle right now: metres along the plan,
+    // or null when times are missing (caller falls back to the plain glide)
+    function modelTargetD(m) {
+      const nowS = secNow(), st = m.st;
+      const dep0 = st[0].p || st[0].a;
+      if (dep0 != null && relSec2(dep0, nowS) > 0) return st[0].d;      // dwelling
+      for (let i = 0; i < st.length - 1; i++) {
+        const dep = st[i].p || st[i].a, arr = st[i + 1].a || st[i + 1].p;
+        if (dep == null || arr == null) return null;
+        const rd = relSec2(dep, nowS), ra = relSec2(arr, nowS);
+        if (ra > 0) {
+          if (rd >= 0) return st[i].d;                                   // not departed yet
+          const f = Math.min(1, -rd / Math.max(1, ra - rd));
+          // hold just short of the stop when late — never overshoot the plan
+          return st[i].d + (st[i + 1].d - st[i].d) * Math.min(0.985, easeSS(f));
+        }
+        const depN = st[i + 1].p || st[i + 1].a;
+        if (depN != null && relSec2(depN, nowS) > 0) return st[i + 1].d; // dwelling at next
+      }
+      return st[st.length - 1].d;
+    }
+    function modelPoint(m, d) {
+      const pts = m.pts, cum = m.cum;
+      let i = 1;
+      while (i < cum.length - 1 && cum[i] < d) i++;
+      const sg = (cum[i] - cum[i - 1]) || 1;
+      const t = Math.max(0, Math.min(1, (d - cum[i - 1]) / sg));
+      return { pos: { lat: lerp(pts[i - 1].lat, pts[i].lat, t), lng: lerp(pts[i - 1].lng, pts[i].lng, t) },
+               head: bearing(pts[i - 1], pts[i]) };
+    }
+    // metres along pts of the point nearest p — null if it's not on the plan
+    function projectOnPts(p, pts, cum) {
+      let bi = 0, bt = 0, bd = Infinity;
+      const ky = 111320, kx = 111320 * Math.cos(p.lat * Math.PI / 180);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i], b = pts[i + 1];
+        const px = (p.lng - a.lng) * kx, py = (p.lat - a.lat) * ky;
+        const bx = (b.lng - a.lng) * kx, by = (b.lat - a.lat) * ky;
+        const L2 = bx * bx + by * by;
+        const t = L2 ? Math.max(0, Math.min(1, (px * bx + py * by) / L2)) : 0;
+        const d = Math.hypot(px - t * bx, py - t * by);
+        if (d < bd) { bd = d; bi = i; bt = t; }
+      }
+      if (bd > 80) return null;
+      return cum[bi] + bt * (cum[bi + 1] - cum[bi]);
+    }
+
+    let lastScaleZoom = -1, lastPitch = -1, rafOn = false, frameNo = 0, lastAnimT = 0;
     function animate() {
       if (document.hidden) { rafOn = false; return; }   // visibilitychange restarts the loop
       rafOn = true; frameNo++;
       const now = Date.now();
+      const dtS = lastAnimT ? Math.min(0.2, (now - lastAnimT) / 1000) : 0.016;
+      lastAnimT = now;
       // while the zoom or the 3D tilt is animating, glide every marker with it
       const z = map ? map.getZoom() : -1;
       const pi = map ? map.getPitch() : 0;
@@ -3084,7 +3158,22 @@
       const vb = map ? map.getBounds() : null;
       for (const v of vehicles.values()) {
         if (v.marker.getMap()) {
-          const p = curPos(v, now);
+          let p;
+          if (v.model) {
+            const tgt = modelTargetD(v.model);
+            if (tgt == null) { v.model = null; p = curPos(v, now); }
+            else {
+              const dd = tgt - v.mDrawn;
+              if (Math.abs(dd) > 300) v.mDrawn = tgt;
+              else {
+                const cap = 22 * dtS;              // ≤ 22 m/s on screen — no sprints
+                v.mDrawn += Math.max(-cap, Math.min(cap, dd * Math.min(1, dtS * 4)));
+              }
+              const mpv = modelPoint(v.model, v.mDrawn);
+              if (Math.abs(dd) > 0.6) v.targetHead = mpv.head;
+              p = v.off ? { lat: mpv.pos.lat + v.off.lat, lng: mpv.pos.lng + v.off.lng } : mpv.pos;
+            }
+          } else p = curPos(v, now);
           // offscreen vehicles get no per-frame work; clearing the cache makes
           // the first visible frame re-place the marker after a pan-back
           if (vb && !vb.contains(p)) { v._lp = null; continue; }
