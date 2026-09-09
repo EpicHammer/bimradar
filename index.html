@@ -4093,10 +4093,32 @@
         }
       }
       if (map && (path.length || walkSegs.length)) {
+        const WALK_PAINT = { 'line-color': cssv('--accent'), 'line-opacity': 0.55, 'line-width': 3.5, 'line-dasharray': [0.2, 2] };
         if (path.length) setLine('trip', path, { 'line-color': cssv('--accent'), 'line-opacity': 0.9, 'line-width': 5 });
-        if (walkSegs.length) setSegs('tripwalk', walkSegs,
-          { 'line-color': cssv('--accent'), 'line-opacity': 0.55, 'line-width': 3.5, 'line-dasharray': [0.2, 2] });
+        if (walkSegs.length) setSegs('tripwalk', walkSegs, WALK_PAINT);
         tripLine = 'trip';
+        // the chords above are instant placeholders; swap in real foot routes
+        // (FOSSGIS/OSM router) so a walk leg crosses the Mur on a BRIDGE, not
+        // as a straight line through the water
+        if (walkSegs.length) {
+          const mySel = idx;
+          Promise.all(walkSegs.map(sg =>
+            fetch('https://routing.openstreetmap.de/routed-foot/route/v1/foot/' +
+                  sg[0].lng + ',' + sg[0].lat + ';' + sg[1].lng + ',' + sg[1].lat +
+                  '?overview=full&geometries=geojson')
+              .then(r => r.json())
+              .then(j => {
+                const rt = j.routes && j.routes[0];
+                return (rt && rt.geometry)
+                  ? rt.geometry.coordinates.map(cc => ({ lng: cc[0], lat: cc[1] }))
+                  : sg;                                  // router silent — keep the chord
+              }).catch(() => sg)
+          )).then(routed => {
+            // still the selected option, and the layer wasn't cleared meanwhile
+            if (!map || trip.sel !== mySel || tripLine !== 'trip') return;
+            setSegs('tripwalk', routed, WALK_PAINT);
+          });
+        }
         const b = new maplibregl.LngLatBounds();
         path.forEach(pt => b.extend([pt.lng, pt.lat]));
         walkSegs.forEach(sg => sg.forEach(pt => b.extend([pt.lng, pt.lat])));
