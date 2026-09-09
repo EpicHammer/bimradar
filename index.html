@@ -2604,6 +2604,7 @@
 
     async function openStop(m) {
       if (armed) {                       // a field is waiting — use this stop for it
+        if (armed === 'to') trip.finalWalk = null;
         trip[armed] = { lid: m.__lid, name: m.__name };
         $(armed).value = m.__name;
         dropPin(armed, m.getPosition(), m.__name);
@@ -3318,9 +3319,11 @@
     }
     // fill the destination and jump into the planner — the "Directions" tap
     // every map app has
-    function setTripTo(dest) {   // {name, lat, lng, lid?}
+    async function setTripTo(dest) {   // {name, lat, lng, lid?}
+      trip.finalWalk = null;
       trip.to = dest.lid ? { lid: dest.lid, name: dest.name }
         : { crd: { x: Math.round(dest.lng * 1e6), y: Math.round(dest.lat * 1e6) }, name: dest.name };
+      const mine = trip.to;
       $('to').value = dest.name;
       dropPin('to', { lat: dest.lat, lng: dest.lng }, dest.name);
       setArmed(null);
@@ -3329,6 +3332,45 @@
       closeCard();
       setSheet('full');
       if (!trip.from) setTimeout(() => $('from').focus(), 380);
+      if (dest.lid) return;
+      // Coordinate destination (landmark): HAFAS's own foot heuristics happily
+      // ride past the nearest sensible stop and walk back across the river.
+      // Pick the alighting stop OURSELVES — the nearby stop with the shortest
+      // REAL walking time (OSM foot router) — route the transit trip there,
+      // and carry the final walk separately (rendered + drawn by us).
+      try {
+        const res = await hafas('LocGeoPos', {
+          ring: { cCrd: { x: Math.round(dest.lng * 1e6), y: Math.round(dest.lat * 1e6) }, maxDist: 600, minDist: 0 },
+          getStops: true, getPOIs: false, maxLoc: 8
+        });
+        const cands = [], seenK = new Set();
+        for (const l of (res.locL || [])) {
+          if (l.type !== 'S' || !l.crd || !l.lid) continue;
+          const gid = (l.globalIdL && l.globalIdL[0] && l.globalIdL[0].id) || l.name;
+          const key = String(gid).split(':').slice(0, 3).join(':');
+          if (seenK.has(key)) continue;
+          seenK.add(key);
+          cands.push({ lid: l.lid, name: shortStop(l.name), lat: l.crd.y / 1e6, lng: l.crd.x / 1e6 });
+          if (cands.length >= 3) break;
+        }
+        if (!cands.length) return;
+        const walks = await Promise.all(cands.map(c =>
+          fetch('https://routing.openstreetmap.de/routed-foot/route/v1/foot/' +
+                c.lng + ',' + c.lat + ';' + dest.lng + ',' + dest.lat + '?overview=full&geometries=geojson')
+            .then(r => r.json()).then(j2 => {
+              const rt = j2.routes && j2.routes[0];
+              return rt && rt.geometry ? { secs: rt.duration,
+                path: rt.geometry.coordinates.map(cc => ({ lng: cc[0], lat: cc[1] })) } : null;
+            }).catch(() => null)));
+        let best = -1;
+        for (let i = 0; i < cands.length; i++)
+          if (walks[i] && (best < 0 || walks[i].secs < walks[best].secs)) best = i;
+        if (best < 0 || trip.to !== mine) return;   // field changed meanwhile
+        const c = cands[best], w = walks[best];
+        trip.to = { lid: c.lid, name: c.name };
+        trip.finalWalk = { to: { lat: dest.lat, lng: dest.lng }, name: dest.name,
+          mins: Math.max(1, Math.round(w.secs / 60)), path: w.path };
+      } catch (e) { /* coordinate routing stands — today's behaviour */ }
     }
     function openLandmark(L, part, lngLat) {
       const node = document.createElement('div');
@@ -3732,6 +3774,7 @@
     const mkEl = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; };
     const suggState = { from: [], to: [] };   // latest suggestion lists, for Enter-to-pick
     function pickSuggestion(which, item) {
+      if (which === 'to') trip.finalWalk = null;
       // stops carry a HAFAS id (exact routing); places go in as coordinates
       trip[which] = item.lid
         ? { lid: item.lid, name: item.name }
@@ -3783,6 +3826,7 @@
         const near = (res.locL || []).find(l => l.type === 'S');
         if (near) name = 'Near ' + shortStop(near.name);
       } catch (e) {}
+      if (which === 'to') trip.finalWalk = null;
       trip[which] = { crd, name };
       $(which).value = name;
       dropPin(which, latLng, name);
@@ -3917,7 +3961,7 @@
     const debFrom = debounce(v => searchLoc(v, $('sugg-from'), 'from'), 250);
     const debTo = debounce(v => searchLoc(v, $('sugg-to'), 'to'), 250);
     $('from').addEventListener('input', e => { trip.from = null; debFrom(e.target.value.trim()); updateClearBtn(); });
-    $('to').addEventListener('input', e => { trip.to = null; debTo(e.target.value.trim()); updateClearBtn(); });
+    $('to').addEventListener('input', e => { trip.to = null; trip.finalWalk = null; debTo(e.target.value.trim()); updateClearBtn(); });
     $('from').addEventListener('blur', () => setTimeout(() => { $('sugg-from').hidden = true; $('from').setAttribute('aria-expanded', 'false'); }, 120));
     $('to').addEventListener('blur', () => setTimeout(() => { $('sugg-to').hidden = true; $('to').setAttribute('aria-expanded', 'false'); }, 120));
     $('from').addEventListener('focus', () => setArmed('from'));
@@ -3942,6 +3986,7 @@
     $('swap').addEventListener('click', () => {
       const a = trip.from, b = trip.to;
       trip.from = b; trip.to = a;
+      trip.finalWalk = null;              // the appended walk belonged to the old 'to'
       $('from').value = b ? b.name : ''; $('to').value = a ? a.name : '';
     });
 
@@ -3986,7 +4031,7 @@
       $('clear').hidden = !any;
     }
     function clearSearch() {
-      trip.from = null; trip.to = null; trip.opts = []; trip.sel = -1;
+      trip.from = null; trip.to = null; trip.finalWalk = null; trip.opts = []; trip.sel = -1;
       $('from').value = ''; $('to').value = '';
       $('sugg-from').hidden = true; $('sugg-to').hidden = true;
       $('results').replaceChildren();
@@ -4032,6 +4077,7 @@
       // Honesty card: for short hops, transit is often sillier than walking.
       const coW = o => o && o.crd ? { lat: o.crd.y / 1e6, lng: o.crd.x / 1e6 } : null;
       let wA = coW(trip.from), wB = coW(trip.to);
+      if (!wB && trip.finalWalk) wB = trip.finalWalk.to;   // 'to' is a stop, true goal is beyond
       if ((!wA || !wB) && trip.opts.length) {
         const c0 = trip.opts[0];
         wA = wA || coW(locL[c0.dep.locX]); wB = wB || coW(locL[c0.arr.locX]);
@@ -4117,11 +4163,19 @@
           }
           first = false;
         }
+        // the walk we appended ourselves (best-alighting-stop destinations)
+        if (trip.finalWalk) {
+          const ar2 = document.createElement('span'); ar2.className = 'arrow'; ar2.textContent = '›';
+          const w2 = document.createElement('span'); w2.className = 'walk';
+          w2.innerHTML = ICON_WALK + ' ' + trip.finalWalk.mins + '′';
+          chain.append(ar2, w2);
+        }
         card.appendChild(chain);
 
         const meta = document.createElement('div');
         meta.className = 'meta';
-        meta.textContent = (c.chg === 0 ? 'direct' : c.chg + ' change' + (c.chg > 1 ? 's' : ''));
+        meta.textContent = (c.chg === 0 ? 'direct' : c.chg + ' change' + (c.chg > 1 ? 's' : ''))
+          + (trip.finalWalk ? ' · then ' + trip.finalWalk.mins + '′ walk to ' + trip.finalWalk.name : '');
         card.appendChild(meta);
 
         // detailed legs, revealed when the option is selected
@@ -4181,6 +4235,8 @@
           if (wa && wb && (wa.lat !== wb.lat || wa.lng !== wb.lng)) walkSegs.push([wa, wb]);
         }
       }
+      // our own final walk (already a real routed path) joins the walk layer
+      if (trip.finalWalk && trip.finalWalk.path) walkSegs.push(trip.finalWalk.path);
       if (map && (path.length || walkSegs.length)) {
         const WALK_PAINT = { 'line-color': cssv('--accent'), 'line-opacity': 0.55, 'line-width': 3.5, 'line-dasharray': [0.2, 2] };
         if (path.length) setLine('trip', path, { 'line-color': cssv('--accent'), 'line-opacity': 0.9, 'line-width': 5 });
@@ -4191,7 +4247,7 @@
         // as a straight line through the water
         if (walkSegs.length) {
           const mySel = idx;
-          Promise.all(walkSegs.map(sg =>
+          Promise.all(walkSegs.map(sg => sg.length > 2 ? Promise.resolve(sg) :  // already routed
             fetch('https://routing.openstreetmap.de/routed-foot/route/v1/foot/' +
                   sg[0].lng + ',' + sg[0].lat + ';' + sg[1].lng + ',' + sg[1].lat +
                   '?overview=full&geometries=geojson')
@@ -4216,7 +4272,8 @@
         const cn = trip.opts[idx];
         const pA = coLoc(locL[cn.dep.locX]), pB = coLoc(locL[cn.arr.locX]);
         if (pA) dropPin('from', pA, $('from').value || 'Start');
-        if (pB) dropPin('to', pB, $('to').value || 'Destination');
+        if (trip.finalWalk) dropPin('to', trip.finalWalk.to, trip.finalWalk.name);
+        else if (pB) dropPin('to', pB, $('to').value || 'Destination');
       }
     }
 
