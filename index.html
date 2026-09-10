@@ -3234,13 +3234,16 @@
             if (tgt == null) { v.model = null; p = curPos(v, now); }
             else {
               const dd = tgt - v.mDrawn;
-              if (Math.abs(dd) > 300) v.mDrawn = tgt;
-              else {
+              if (Math.abs(dd) > 300) v.mDrawn = tgt;   // genuine re-anchoring: teleport
+              else if (dd > 0) {
                 const cap = 22 * dtS;              // ≤ 22 m/s on screen — no sprints
-                v.mDrawn += Math.max(-cap, Math.min(cap, dd * Math.min(1, dtS * 4)));
+                v.mDrawn += Math.min(cap, dd * Math.min(1, dtS * 4));
               }
+              // dd < 0: a delay update pulled the timetable position BEHIND the
+              // drawn spot. Real trams don't reverse mid-route — hold here and
+              // let the clock catch up (same guard the poller applies to reports)
               const mpv = modelPoint(v.model, v.mDrawn);
-              if (Math.abs(dd) > 0.6) v.targetHead = mpv.head;
+              if (dd > 0.6) v.targetHead = mpv.head;
               p = v.off ? { lat: mpv.pos.lat + v.off.lat, lng: mpv.pos.lng + v.off.lng } : mpv.pos;
             }
           } else p = curPos(v, now);
