@@ -887,6 +887,7 @@
       192602324, 192602325, 192602326, 192602327,                   // Hbf: escalator-head roofs on Europaplatz
       354342549, 354636665, 354354006,                              // Hbf: platform canopies (modeled as thin plates)
       2395973,                                                      // Hbf: the Golden Eye ring (relation; CARTO extrudes it 7 m)
+      292846895,
       5130931, 183465511, 352749432,                                // Merkur Arena bowl + pitch, Science Tower
       158029501, 312051498, 158029502, 455088184, 569664151,        // ams OSRAM: fabs, office, long block, Parkhaus
       455088187, 455088170, 787248262,                              // …further campus buildings
@@ -2321,6 +2322,114 @@
               gt.position.y = sbH(47.0759736, 15.4371872);  // Glockenturm onto the summit
             })();
 
+            // ---- Styria Media Center (Gadollaplatz, 2015) — the glass media tower ----
+            // OSM part 292846895: a 67 m glass body from 12 m up (min_height) on a
+            // podium; 14 floors banded, white roof plate. The tallest thing on the
+            // south side of the Ring, seen from lines 4/5/6/13.
+            const SM_POLY = [[-42.7,16.6],[-42.4,14.5],[-34.3,2.6],[-28.8,-5.2],[-25.5,-10],[-23.6,-11.3],[-18.1,-14],[-14.4,-15.8],[-9.6,-17],[-4.4,-17.1],[1.9,-17.1],[6.9,-16.5],[10.7,-14.5],[15.1,-12.8],[22.7,-6.8],[25.8,-4.4],[30.5,-1.8],[34.4,1.8],[35.5,4],[35.5,6.8],[35,8.1],[32.4,8.1],[26.9,6.7],[22.5,5.8],[17.4,5.2],[7,4],[-0.7,4.5],[-9.7,6],[-18.4,8.8],[-26.5,12.2],[-41.4,20],[-41.9,19.1],[-42.3,18]];
+            (function () {
+              const smc = new THREE.Group();
+              const dark = isDark();
+              smc.add(extrudeFoot(scalePoly(SM_POLY, 1.12), 12, dark ? 0x8b8f94 : 0xc9cbcf, 0.74, 0.36));   // podium
+              const body = extrudeFoot(SM_POLY, 55, dark ? 0x5f7d93 : 0x8fb0c4, 0.72, 0.4);
+              body.position.y = 12; smc.add(body);
+              for (let y = 16; y < 67; y += 4) {                                                        // floor bands
+                const band = extrudeFoot(scalePoly(SM_POLY, 1.012), 0.45, 0x3d4b56, 0.7, 0.3);
+                band.position.y = y; smc.add(band);
+              }
+              const roof = extrudeFoot(scalePoly(SM_POLY, 1.03), 1.2, 0xe8eaec, 0.84, 0.26);
+              roof.position.y = 67; smc.add(roof);
+              const mc2 = maplibregl.MercatorCoordinate.fromLngLat([15.4458711, 47.0568483], 0);
+              smc.position.set((mc2.x - T.x) / T.scale, 0, (mc2.y - T.y) / T.scale);
+              scene.add(smc);
+            })();
+
+            // ---- Mur bridges — decks with railings and piers (OSM man_made=bridge outlines) ----
+            // Each deck is the surveyed outline, lifted so it reads as a bridge over
+            // the flat river; railings run along every edge longer than 18 m (the
+            // two long sides), beam bridges get a pair of piers on the long axis.
+            const BR_EJ = [[-30.5,11.3],[-30.2,8.9],[-29.3,0.3],[-29.1,-1.2],[-29,-2.6],[-28.4,-7.8],[-28.1,-10.1],[-20.8,-9.6],[30,-5.7],[29.7,-3.4],[29.4,-1.4],[29.2,1.8],[29.1,3.2],[28.9,4.7],[28,13.3],[27.7,16.3]];
+            const BR_TG = [[-32.8,-8.8],[-25.7,-8.7],[17.6,-11.2],[25.7,-11.8],[28.2,-12.4],[29.9,-13.4],[31.3,-15.2],[31.3,-9.4],[31.5,-4],[31.5,-1.6],[31.5,1.1],[31.5,7.8],[31.6,10.4],[29.5,9],[26.2,8.8],[25.7,9],[17.4,9.4],[-19.4,11.1],[-22.7,11.7],[-23.3,11.8],[-24.9,12.3],[-26.9,13.7],[-29.5,17.2],[-29.3,12.9],[-31.2,4.2],[-31.5,1.6],[-31.9,-1.1],[-32.6,-6.6]];
+            const BR_RA = [[-39.4,-13.3],[-35.6,-13.2],[-35.3,-11.5],[-31.7,-12.1],[17,-15.1],[22.2,-15.6],[31.8,-16.3],[31.9,-18.6],[34.6,-19.3],[34.9,-13.7],[36.2,-2.6],[37.6,5.3],[37.8,9.4],[33.8,9.7],[33.5,7.5],[30.6,7.6],[25.4,8],[20.1,8.3],[-28.8,12.5],[-33,13.3],[-33.4,15.5],[-35.9,15.6],[-35.7,10.6],[-36.2,2.6],[-38,-7.9]];
+            const BR_KE = [[-43.8,-6.1],[-43.2,-7.7],[-40.6,-14.8],[-37.7,-22.3],[-37.1,-24],[-32.1,-22.1],[-26.2,-19.9],[-24.2,-19.2],[-23.8,-19],[-14,-15.4],[38,3.9],[41.3,5.2],[40.8,6.6],[37.8,14.6],[35.1,21.7],[34.6,23],[32.1,22.1],[-18.1,3.4],[-24,1.2],[-30.7,-1.2],[-32.6,-1.9],[-33.4,-2.3],[-38.1,-4]];
+            const BR_AS = [[-37,-5.3],[-33.1,-4.7],[20,-8.7],[31.1,-9.5],[33.7,-9.7],[35.5,-9.8],[35.7,-8.4],[36.4,-3.1],[37.4,4.8],[37.7,7.6],[34.6,7.9],[28.2,8.3],[21.7,8.8],[-29.6,12.7],[-35.4,13],[-35.9,9.2],[-36.4,3.1],[-36.9,-3.6]];
+            (function () {
+              const dark = isDark();
+              const DECK = dark ? 0x6b6e72 : 0xd2d0ca, RAIL = dark ? 0xa3a8ad : 0x5d6166;
+              const bridge = (lng, lat, poly, piers) => {
+                const b = new THREE.Group();
+                const deck = extrudeFoot(poly, 1.3, DECK, 0.78, 0.32);
+                deck.position.y = 2.0; b.add(deck);
+                let best = null;
+                for (let i = 0; i < poly.length; i++) {
+                  const p = poly[i], q = poly[(i + 1) % poly.length];
+                  const L = Math.hypot(q[0] - p[0], q[1] - p[1]);
+                  if (!best || L > best.L) best = { p, q, L };
+                  if (L < 18) continue;
+                  const rail = facet(new THREE.BoxGeometry(L, 1.1, 0.25), RAIL, 0.7, 0.35);
+                  rail.position.set((p[0] + q[0]) / 2, 3.85, -(p[1] + q[1]) / 2);
+                  rail.rotation.y = Math.atan2(q[1] - p[1], q[0] - p[0]);
+                  b.add(rail);
+                }
+                if (piers && best) {                          // two piers on the long axis
+                  let cx = 0, cy = 0; poly.forEach(v => { cx += v[0]; cy += v[1]; }); cx /= poly.length; cy /= poly.length;
+                  const ux = (best.q[0] - best.p[0]) / best.L, uy = (best.q[1] - best.p[1]) / best.L;
+                  for (const s of [-best.L / 4, best.L / 4]) {
+                    const pier = facet(new THREE.BoxGeometry(3, 2.2, 14), DECK, 0.66, 0.3);
+                    pier.position.set(cx + ux * s, 1.1, -(cy + uy * s));
+                    pier.rotation.y = Math.atan2(uy, ux);
+                    b.add(pier);
+                  }
+                }
+                const mc2 = maplibregl.MercatorCoordinate.fromLngLat([lng, lat], 0);
+                b.position.set((mc2.x - T.x) / T.scale, 0, (mc2.y - T.y) / T.scale);
+                scene.add(b);
+              };
+              bridge(15.4350595, 47.0709065, BR_EJ, true);    // Erzherzog-Johann-Brücke (tram, 1965)
+              bridge(15.4351581, 47.0695564, BR_TG, true);    // Tegetthoffbrücke (rebuilt 2024)
+              bridge(15.4349083, 47.0663761, BR_RA, true);    // Radetzkybrücke
+              bridge(15.4329319, 47.0772157, BR_KE, true);    // Keplerbrücke
+              bridge(15.434583,  47.0642209, BR_AS, false);   // Alfred-Stingl-Brücke (arch, 1977)
+            })();
+
+            // ---- Schloßbergbahn — the funicular up the west flank (OSM railway=funicular) ----
+            // Track from the Kaiser-Franz-Josef-Kai station to the summit, riding
+            // the terrain mesh via sbH(); a blue car parked a third of the way up.
+            const FUN = [[-52.4,-67.3],[-44,-62.9],[-32.2,-53.3],[-25.5,-45],[-20.3,-36.1],[-11.2,-16],[-3,-3.4],[8.2,9.3],[18,18.1],[27.4,24.6],[55.3,51.7],[68.1,63.7]];
+            const FUN_OUT = [[-60,-62],[-46,-78],[78,56],[62,72]];
+            (function () {
+              const lng0 = 15.4358481, lat0 = 47.0755124;
+              const kx = 111320 * Math.cos(lat0 * Math.PI / 180), ky = 110540;
+              const dark = isDark();
+              const grp = new THREE.Group();
+              const H = p => sbH(lat0 + p[1] / ky, lng0 + p[0] / kx) + 0.8;
+              const pos = [], col = [], base = new THREE.Color(dark ? 0x4d4f52 : 0x6e7074);
+              for (let i = 0; i < FUN.length - 1; i++) {
+                const p = FUN[i], q = FUN[i + 1], dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1;
+                const nx = -dy / L * 1.7, ny = dx / L * 1.7, hp = H(p), hq = H(q);
+                const a = [p[0] + nx, hp, -(p[1] + ny)], b = [p[0] - nx, hp, -(p[1] - ny)];
+                const c = [q[0] - nx, hq, -(q[1] - ny)], d = [q[0] + nx, hq, -(q[1] + ny)];
+                for (const v of [a, b, c, a, c, d]) { pos.push(v[0], v[1], v[2]); col.push(base.r, base.g, base.b); }
+              }
+              const geo = new THREE.BufferGeometry();
+              geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+              geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+              grp.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+              const p = FUN[3], q = FUN[4], mid = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+              const car = facet(new THREE.BoxGeometry(2.6, 3.2, 6.5), 0x2f6db5, 0.72, 0.4);
+              car.position.set(mid[0], H(mid) + 1.8, -mid[1]);
+              car.rotation.y = Math.atan2(q[0] - p[0], -(q[1] - p[1]));
+              grp.add(car);
+              const lo = facet(new THREE.BoxGeometry(9, 5.5, 7), dark ? 0x7d8288 : 0xd8d4cb, 0.74, 0.36);   // valley station
+              lo.position.set(FUN[0][0] - 3, 2.75, -FUN[0][1] + 2); grp.add(lo);
+              const hi = facet(new THREE.BoxGeometry(8, 5, 7), dark ? 0x7d8288 : 0xd8d4cb, 0.74, 0.36);     // summit station
+              const top = FUN[FUN.length - 1];
+              hi.position.set(top[0] + 3, H(top) + 2.5, -top[1] - 2); grp.add(hi);
+              const mc2 = maplibregl.MercatorCoordinate.fromLngLat([lng0, lat0], 0);
+              grp.position.set((mc2.x - T.x) / T.scale, 0, (mc2.y - T.y) / T.scale);
+              scene.add(grp);
+            })();
+
             // Occluder registry for the vehicle occlusion pass (see updateOcclusion):
             // each landmark's footprint polys (local metres E,N) + heights. Guarded —
             // onAdd re-runs after every theme switch and must not duplicate.
@@ -2422,7 +2531,21 @@
               { name: 'Uni Graz — Hauptgebäude', info: "Main building of the University of Graz on Universitaetsplatz (1895, historicist style). The university itself is Austria's second-oldest, founded in 1585.",
                 lng: 15.449878,  lat: 47.077747,  polys: [{ p: UNI_OUT, h: 17 }] },
               { name: 'Schlossberg', info: "The 473 m hill the city grew around: a fortress from the 12th century, blown up by Napoleon's troops in 1809 - only the Uhrturm and the Glockenturm were spared, bought free by the citizens. Today a park, reached by the Schlossbergbahn funicular, the lift through the rock, or 260 steps.",
-                lng: 15.4377297, lat: 47.0735395, polys: [{ p: SB_OUT, h: 45 }] }
+                lng: 15.4377297, lat: 47.0735395, polys: [{ p: SB_OUT, h: 45 }] },
+{ name: 'Styria Media Center', info: "Headquarters of the Styria media group (2015): a 67 m glass slab on Gadollaplatz, the tallest thing south of the Ring. Newsrooms of the Kleine Zeitung and Die Presse sit behind the banded glass.",
+                lng: 15.4458711, lat: 47.0568483, polys: [{ p: SM_POLY, h: 67 }] },
+              { name: 'Erzherzog-Johann-Brücke', info: "The tram bridge of the old town (1965): lines 1, 3, 6 and 7 cross the Mur here between Südtiroler Platz and the Hauptplatz side.",
+                lng: 15.4350595, lat: 47.0709065, polys: [{ p: BR_EJ, h: 4 }] },
+              { name: 'Tegetthoffbrücke', info: "Rebuilt from scratch and reopened in November 2024 - the newest Mur crossing, linking the Kunsthaus side with the Joanneumsviertel.",
+                lng: 15.4351581, lat: 47.0695564, polys: [{ p: BR_TG, h: 4 }] },
+              { name: 'Radetzkybrücke', info: "Road bridge at the south end of the old town, between Gries and the Radetzkystraße.",
+                lng: 15.4349083, lat: 47.0663761, polys: [{ p: BR_RA, h: 4 }] },
+              { name: 'Keplerbrücke', info: "The northern old-town crossing at the foot of the Schlossberg, between Lend and the Kaiser-Franz-Josef-Kai; a bridge has stood here since 1836.",
+                lng: 15.4329319, lat: 47.0772157, polys: [{ p: BR_KE, h: 4 }] },
+              { name: 'Augartenbrücke', info: "Officially the Alfred-Stingl-Brücke (1977), an arch bridge by the Augarten park.",
+                lng: 15.434583, lat: 47.0642209, polys: [{ p: BR_AS, h: 4 }] },
+              { name: 'Schloßbergbahn', info: "The funicular up the west flank of the Schlossberg since 1894: 212 m of track at up to 61% gradient, from the Kaiser-Franz-Josef-Kai to the summit by the Glockenturm. Blue cars, a little over a minute per ride.",
+                lng: 15.4358481, lat: 47.0755124, polys: [{ p: FUN_OUT, h: 60 }] }
             );
 
             renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
