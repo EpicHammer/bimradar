@@ -2211,143 +2211,6 @@
             uni.position.set((mcUni.x - T.x) / T.scale, 0, (mcUni.y - T.y) / T.scale);
             scene.add(uni);
 
-            // ---- Schlossberg — the hill itself (EU-DEM 25 m, sampled via opentopodata) ----
-            // The basemap is flat, but the real ground isn't: Graz tilts ~25 m up
-            // from the Mur bank to Geidorf. So the hill is what rises above a
-            // ground PLANE fitted to the grid's outer ring, not above a constant.
-            // Grass on gentle ground (lighter toward the top), rock on the steep
-            // flanks and on a skirt straight down to street level along the
-            // outline — the hill really does rise from Sackstraße and Sporgasse
-            // as cliffs. Upsampled 3x for a rounder outline. The Uhrturm group IS
-            // the scene origin, so no offset; both towers are lifted onto the
-            // surface at the end.
-            const SB_DEM = { lat0: 47.0708, lat1: 47.0782, lon0: 15.4325, lon1: 15.4435, n: 30, base: 362,
-  h: [360,359,359,358,357,356,348,346,349,357,360,362,363,364,364,364,364,364,364,364,363,364,365,366,366,366,366,366,367,367,361,360,358,357,357,353,348,346,349,358,361,363,365,365,365,364,364,364,364,364,364,364,365,366,367,368,368,368,369,369,362,360,358,357,356,351,347,346,349,358,363,365,367,366,366,365,365,365,365,364,364,365,366,368,369,370,370,371,371,371,362,361,359,357,356,350,346,346,349,358,365,367,369,368,367,367,367,367,367,367,367,368,368,370,371,372,373,373,373,373,361,360,358,357,356,350,346,347,350,359,366,368,369,369,369,370,371,371,370,370,370,371,371,372,373,374,374,375,375,375,360,360,358,356,353,349,347,347,352,361,366,369,370,371,373,375,375,374,374,373,373,373,373,373,374,375,375,376,376,376,359,359,358,356,353,348,346,347,353,363,367,370,372,375,378,379,379,378,377,376,376,375,375,375,375,375,375,376,377,377,359,359,357,356,353,348,346,346,353,363,368,372,377,380,382,383,383,382,380,378,377,376,376,375,375,375,375,376,377,377,359,358,357,356,352,348,347,348,354,363,369,375,381,385,387,388,387,385,382,380,378,377,376,375,375,375,375,376,377,377,359,358,357,356,350,347,347,349,355,364,371,379,386,391,394,394,392,388,384,381,379,378,377,376,376,375,375,376,377,378,358,358,357,356,349,347,347,349,358,366,375,384,392,398,400,399,395,391,386,382,380,378,378,377,376,376,375,375,376,377,357,357,357,356,349,347,347,351,360,370,380,390,399,405,406,403,398,393,387,383,381,379,378,378,377,376,375,375,376,376,356,356,357,353,349,347,348,353,363,374,387,399,408,413,413,408,401,394,388,384,381,380,379,378,377,376,375,375,376,376,356,356,356,352,347,347,348,356,367,380,396,411,418,421,420,413,404,396,389,385,382,381,380,379,378,376,376,375,375,375,356,356,356,352,347,347,350,360,373,388,406,422,429,431,428,419,408,398,391,387,384,381,380,379,378,377,376,375,375,375,356,356,355,351,347,347,352,363,379,396,416,432,439,439,435,426,412,401,394,389,386,382,380,379,378,377,376,376,376,375,356,356,354,349,347,347,354,369,385,405,425,440,447,446,441,431,418,406,397,391,388,383,380,379,378,377,376,375,376,375,355,356,353,349,347,347,357,375,392,414,433,446,452,451,446,437,424,411,401,394,390,384,380,379,378,376,375,375,375,376,355,355,352,348,347,350,362,380,399,420,439,451,456,456,451,443,430,415,403,396,390,385,381,378,377,375,374,374,375,376,355,355,350,347,347,352,367,385,403,425,444,455,460,461,456,448,436,420,406,396,390,385,381,378,376,374,373,373,374,376,356,355,350,347,347,354,370,388,406,428,447,459,464,464,460,452,440,425,408,396,389,384,380,377,375,373,373,373,374,376,355,352,349,347,349,357,372,388,406,428,448,460,466,467,463,456,444,428,410,396,387,382,379,377,375,374,374,374,375,376,355,351,347,347,350,360,371,386,404,427,447,460,466,467,464,456,445,428,409,395,385,379,377,376,375,374,374,374,375,375,354,350,347,348,352,361,370,382,399,422,443,457,463,465,461,454,442,424,407,393,383,377,375,375,374,374,374,374,374,374,354,349,347,347,354,363,369,379,394,414,435,449,457,459,456,448,434,417,402,389,380,375,373,373,373,373,373,373,373,373,353,349,348,349,355,363,368,376,389,406,423,439,447,449,446,437,423,409,395,384,376,372,371,372,372,372,372,372,372,372,351,348,348,350,357,362,365,372,383,396,411,425,433,434,431,423,411,399,388,379,373,370,370,371,372,372,372,372,371,371,350,348,348,351,357,360,362,367,376,386,398,408,415,417,414,408,398,389,381,374,370,368,369,370,371,371,371,371,371,371,348,348,349,353,356,358,359,363,369,377,385,393,398,400,398,394,388,382,376,371,369,368,369,370,371,371,371,371,371,371,348,348,349,353,356,356,357,360,364,369,375,381,385,387,386,384,380,376,372,370,368,368,369,370,370,371,371,371,371,372] };
-            // park outline (local metres E,N): the mesh is clipped to it so the
-            // gentle east slope doesn't bury Karmeliterplatz and the Sporgasse
-            const SB_OUT = [[-140,-40],[-60,-110],[80,-70],[125,120],[110,300],[60,430],[-40,470],[-140,400],[-152,200]];
-            const sbInside = (E, N) => {                     // point-in-polygon against SB_OUT
-              let inside = false;
-              for (let i = 0, j = SB_OUT.length - 1; i < SB_OUT.length; j = i++) {
-                const xi = SB_OUT[i][0], yi = SB_OUT[i][1], xj = SB_OUT[j][0], yj = SB_OUT[j][1];
-                if (((yi > N) !== (yj > N)) && (E < (xj - xi) * (N - yi) / (yj - yi) + xi)) inside = !inside;
-              }
-              return inside;
-            };
-            const sbFloor = (function () {                 // z = a + b*x + c*y fitted to the boundary ring
-              const D = SB_DEM, n = D.n, S = [0, 0, 0, 0, 0, 0, 0, 0, 0];   // sums for the 3x3 normal equations
-              let sz = 0, sxz = 0, syz = 0;
-              for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
-                if (i && j && i < n - 1 && j < n - 1) continue;
-                const x = j / (n - 1), y = i / (n - 1), z = D.h[i * n + j];
-                S[0]++; S[1] += x; S[2] += y; S[3] += x; S[4] += x * x; S[5] += x * y; S[6] += y; S[7] += x * y; S[8] += y * y;
-                sz += z; sxz += x * z; syz += y * z;
-              }
-              const det = m => m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * m[7] - m[4] * m[6]);
-              const d0 = det(S) || 1;
-              const sub = (col, v) => { const m = S.slice(); m[col] = v[0]; m[col + 3] = v[1]; m[col + 6] = v[2]; return det(m); };
-              const rhs = [sz, sxz, syz];
-              const a = sub(0, rhs) / d0, b = sub(1, rhs) / d0, c = sub(2, rhs) / d0;
-              return (fx, fy) => a + b * fx + c * fy;          // fx, fy in grid units 0..1
-            })();
-            const sbH = (lat, lon) => {                      // metres above the local ground plane, bilinear
-              const D = SB_DEM, n = D.n;
-              const fi = (lat - D.lat0) / (D.lat1 - D.lat0) * (n - 1), fj = (lon - D.lon0) / (D.lon1 - D.lon0) * (n - 1);
-              const i = Math.max(0, Math.min(n - 2, Math.floor(fi))), j = Math.max(0, Math.min(n - 2, Math.floor(fj)));
-              const a = fi - i, b = fj - j, H = (r, c) => D.h[r * n + c];
-              const z = H(i, j) * (1 - a) * (1 - b) + H(i, j + 1) * (1 - a) * b + H(i + 1, j) * a * (1 - b) + H(i + 1, j + 1) * a * b;
-              const h0 = Math.max(0, z - sbFloor(fj / (n - 1), fi / (n - 1)));
-              // 25 m cells average the cliffs away: the flanks come out too soft and
-              // the Uhrturm terrace ~45 m too low (every DEM says 405 m there; the
-              // tower stands at ~450). Steepen the profile, and enforce the terrace
-              // with a plateau bump that blends out over 80 m — which also turns
-              // the south and west faces into the cliffs they really are.
-              const HMAX = 110, shaped = HMAX * (1 - Math.pow(1 - Math.min(1, h0 / HMAX), 2.0));   // plateau up, flanks steep
-              const dE = (lon - 15.4377297) * 111320 * Math.cos(lat * Math.PI / 180), dN = (lat - 47.0735395) * 110540;
-              const t = Math.max(0, 1 - Math.hypot(dE, dN) / 80);
-              return Math.max(shaped, 88 * t * t * (3 - 2 * t));
-            };
-            (function () {
-              const D = SB_DEM, n = D.n, F = 4, m = (n - 1) * F + 1;   // fine grid (~7 m cells)
-              const kx = 111320 * Math.cos(47.0735 * Math.PI / 180), ky = 110540;
-              const lonAt = j => D.lon0 + (D.lon1 - D.lon0) * j / (m - 1), latAt = i => D.lat0 + (D.lat1 - D.lat0) * i / (m - 1);
-              const X = j => (lonAt(j) - 15.4377297) * kx, Z = i => -(latAt(i) - 47.0735395) * ky;
-              const Y = (i, j) => sbH(latAt(i), lonAt(j));
-              const dark = isDark();
-              // muted, close to the basemap's own park tone: the hill should be
-              // felt, not spotlit — this is a navigation map, not a game
-              const GRASS = new THREE.Color(dark ? 0x3f5140 : 0xafc4a0), GRASS_HI = new THREE.Color(dark ? 0x4d5f4c : 0xc6d5b8);
-              const ROCK = new THREE.Color(dark ? 0x5a5852 : 0xb7b2a8), GROUND = new THREE.Color(dark ? 0x1f2226 : 0xdadfd4);
-              const pos = [], col = [];
-              const tri = (p, q, r) => {                   // flat-shaded, coloured by slope + height
-                const ax = q[0] - p[0], ay = q[1] - p[1], az = q[2] - p[2], bx = r[0] - p[0], by = r[1] - p[1], bz = r[2] - p[2];
-                let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
-                const L = Math.hypot(nx, ny, nz) || 1; nx /= L; ny /= L; nz /= L;
-                if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
-                const steep = Math.min(1, Math.max(0, (0.86 - ny) / 0.4));   // > ~30° reads as rock
-                const avg = (p[1] + q[1] + r[1]) / 3;
-                const hgt = Math.min(1, avg / 100);
-                // the foot fades into the map instead of standing on a wall
-                const c = GRASS.clone().lerp(GRASS_HI, hgt).lerp(ROCK, steep).lerp(GROUND, Math.max(0, 1 - avg / 10));
-                const f = Math.min(1.08, 0.74 + 0.3 * Math.max(0, nx * LIGHT.x + ny * LIGHT.y + nz * LIGHT.z));
-                for (const v of [p, q, r]) { pos.push(v[0], v[1], v[2]); col.push(c.r * f, c.g * f, c.b * f); }
-              };
-              // soft edge: full height inside the park outline, feathered to the
-              // ground over 25 m outside it — no wall, the hill just meets the map
-              const sbDist = (E, N) => {                   // metres outside SB_OUT (0 inside)
-                if (sbInside(E, N)) return 0;
-                let best = Infinity;
-                for (let i = 0, j = SB_OUT.length - 1; i < SB_OUT.length; j = i++) {
-                  const ax = SB_OUT[j][0], ay = SB_OUT[j][1], bx = SB_OUT[i][0] - ax, by = SB_OUT[i][1] - ay;
-                  const L2 = bx * bx + by * by || 1, t = Math.max(0, Math.min(1, ((E - ax) * bx + (N - ay) * by) / L2));
-                  best = Math.min(best, Math.hypot(E - ax - bx * t, N - ay - by * t));
-                }
-                return best;
-              };
-              const Yc = new Float32Array(m * m);
-              for (let i = 0; i < m; i++) for (let j = 0; j < m; j++) {
-                const d = sbDist(X(j), -Z(i)), fe = Math.max(0, 1 - d / 25);
-                Yc[i * m + j] = Y(i, j) * fe * fe * (3 - 2 * fe);
-              }
-              const MIN = 0.4;
-              const inc = (i, j) => i >= 0 && j >= 0 && i < m - 1 && j < m - 1 &&
-                Math.max(Yc[i * m + j], Yc[i * m + j + 1], Yc[(i + 1) * m + j], Yc[(i + 1) * m + j + 1]) >= MIN;
-              const V = (i, j) => [X(j), Yc[i * m + j], Z(i)];
-              for (let i = 0; i < m - 1; i++) for (let j = 0; j < m - 1; j++) {
-                if (!inc(i, j)) continue;
-                const p00 = V(i, j), p01 = V(i, j + 1), p10 = V(i + 1, j), p11 = V(i + 1, j + 1);
-                tri(p00, p01, p11); tri(p00, p11, p10);
-              }
-              const geo = new THREE.BufferGeometry();
-              geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-              geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-              scene.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
-              // the park: low-poly trees scattered over the gentle ground, seeded
-              // so the same forest grows on every theme switch
-              let seed = 7;
-              const rnd = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
-              const CROWN = dark ? 0x334a33 : 0x7a9a6c, TRUNK = 0x6b5a48;
-              let planted = 0;
-              for (let k = 0; k < 900 && planted < 70; k++) {
-                const E = -170 + rnd() * 310, N = -120 + rnd() * 600;
-                if (!sbInside(E, N)) continue;
-                const lat = 47.0735395 + N / ky, lon = 15.4377297 + E / kx;
-                const h = sbH(lat, lon);
-                if (h < MIN + 2) continue;
-                // no trees on the towers' terraces
-                if (Math.hypot(E, N) < 22 || Math.hypot(E + 41, N - 269) < 20) continue;
-                const s = 0.8 + rnd() * 0.7;
-                const crown = facet(new THREE.ConeGeometry(3.2 * s, 7.5 * s, 6), CROWN, 0.6, 0.5);
-                crown.position.set(E, h + 2 + 3.75 * s, -N);
-                const trunk = facet(new THREE.CylinderGeometry(0.35, 0.45, 2.2, 5), TRUNK, 0.7, 0.3);
-                trunk.position.set(E, h + 1.1, -N);
-                scene.add(crown); scene.add(trunk);
-                planted++;
-              }
-              g.position.y = sbH(47.0735395, 15.4377297);   // Uhrturm onto its terrace
-              gt.position.y = sbH(47.0759736, 15.4371872);  // Glockenturm onto the summit
-            })();
-
             // ---- Styria Media Center (Gadollaplatz, 2015) — the glass media tower ----
             // OSM part 292846895: a 67 m glass body from 12 m up (min_height) on a
             // podium; 14 floors banded, white roof plate. The tallest thing on the
@@ -2416,44 +2279,6 @@
               bridge(15.4349083, 47.0663761, BR_RA, true);    // Radetzkybrücke
               bridge(15.4329319, 47.0772157, BR_KE, true);    // Keplerbrücke
               bridge(15.434583,  47.0642209, BR_AS, false);   // Alfred-Stingl-Brücke (arch, 1977)
-            })();
-
-            // ---- Schloßbergbahn — the funicular up the west flank (OSM railway=funicular) ----
-            // Track from the Kaiser-Franz-Josef-Kai station to the summit, riding
-            // the terrain mesh via sbH(); a blue car parked a third of the way up.
-            const FUN = [[-52.4,-67.3],[-44,-62.9],[-32.2,-53.3],[-25.5,-45],[-20.3,-36.1],[-11.2,-16],[-3,-3.4],[8.2,9.3],[18,18.1],[27.4,24.6],[55.3,51.7],[68.1,63.7]];
-            const FUN_OUT = [[-60,-62],[-46,-78],[78,56],[62,72]];
-            (function () {
-              const lng0 = 15.4358481, lat0 = 47.0755124;
-              const kx = 111320 * Math.cos(lat0 * Math.PI / 180), ky = 110540;
-              const dark = isDark();
-              const grp = new THREE.Group();
-              const H = p => sbH(lat0 + p[1] / ky, lng0 + p[0] / kx) + 0.8;
-              const pos = [], col = [], base = new THREE.Color(dark ? 0x4d4f52 : 0x6e7074);
-              for (let i = 0; i < FUN.length - 1; i++) {
-                const p = FUN[i], q = FUN[i + 1], dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1;
-                const nx = -dy / L * 1.7, ny = dx / L * 1.7, hp = H(p), hq = H(q);
-                const a = [p[0] + nx, hp, -(p[1] + ny)], b = [p[0] - nx, hp, -(p[1] - ny)];
-                const c = [q[0] - nx, hq, -(q[1] - ny)], d = [q[0] + nx, hq, -(q[1] + ny)];
-                for (const v of [a, b, c, a, c, d]) { pos.push(v[0], v[1], v[2]); col.push(base.r, base.g, base.b); }
-              }
-              const geo = new THREE.BufferGeometry();
-              geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-              geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-              grp.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
-              const p = FUN[3], q = FUN[4], mid = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
-              const car = facet(new THREE.BoxGeometry(2.6, 3.2, 6.5), 0x2f6db5, 0.72, 0.4);
-              car.position.set(mid[0], H(mid) + 1.8, -mid[1]);
-              car.rotation.y = Math.atan2(q[0] - p[0], -(q[1] - p[1]));
-              grp.add(car);
-              const lo = facet(new THREE.BoxGeometry(9, 5.5, 7), dark ? 0x7d8288 : 0xd8d4cb, 0.74, 0.36);   // valley station
-              lo.position.set(FUN[0][0] - 3, 2.75, -FUN[0][1] + 2); grp.add(lo);
-              const hi = facet(new THREE.BoxGeometry(8, 5, 7), dark ? 0x7d8288 : 0xd8d4cb, 0.74, 0.36);     // summit station
-              const top = FUN[FUN.length - 1];
-              hi.position.set(top[0] + 3, H(top) + 2.5, -top[1] - 2); grp.add(hi);
-              const mc2 = maplibregl.MercatorCoordinate.fromLngLat([lng0, lat0], 0);
-              grp.position.set((mc2.x - T.x) / T.scale, 0, (mc2.y - T.y) / T.scale);
-              scene.add(grp);
             })();
 
             // ---- Kastner & Öhler (Sackstraße; this building 1914, roofscape 2010) ----
@@ -2610,9 +2435,9 @@
             // onAdd re-runs after every theme switch and must not duplicate.
             if (!LMK_OCC.length) LMK_OCC.push(
               { name: 'Uhrturm', info: "Graz's landmark (28 m, 13th century). The 1712 clock has 'swapped' hands - the big one shows the hours. In 1809 the citizens paid Napoleon's troops 2,987 guilders to spare it from demolition.",
-                lng: 15.4377297, lat: 47.0735395, polys: [{ p: [[-5,-5],[5,-5],[5,5],[-5,5]], h: 32 + sbH(47.0735395, 15.4377297) }] },
+                lng: 15.4377297, lat: 47.0735395, polys: [{ p: [[-5,-5],[5,-5],[5,5],[-5,5]], h: 32 }] },
               { name: 'Glockenturm "Liesl"', info: "Octagonal bell tower on the Schlossberg (1588, 34 m). Its bell 'Liesl' (4.6 t) is the third-largest in Styria.",
-                lng: 15.4371872, lat: 47.0759736, polys: [{ p: [[-6,-6],[6,-6],[6,6],[-6,6]], h: 34 + sbH(47.0759736, 15.4371872) }] },
+                lng: 15.4371872, lat: 47.0759736, polys: [{ p: [[-6,-6],[6,-6],[6,6],[-6,6]], h: 34 }] },
               { name: 'Murinsel', info: "Floating steel island by Vito Acconci, built for Graz's year as European Capital of Culture 2003. Cafe under the glass dome, an amphitheatre, and footbridges to both banks.",
                 lng: 15.434596,  lat: 47.073166,  polys: [{ p: MUR_FOOT, h: 12 }] },
               { name: 'Herz-Jesu-Kirche', info: 'Neo-Gothic by Georg Hauberrisser (1881-1887). At 109.6 m the tallest church tower in Styria and the third-tallest in Austria.',
@@ -2705,8 +2530,6 @@
                 ] },
               { name: 'Uni Graz — Hauptgebäude', info: "Main building of the University of Graz on Universitaetsplatz (1895, historicist style). The university itself is Austria's second-oldest, founded in 1585.",
                 lng: 15.449878,  lat: 47.077747,  polys: [{ p: UNI_OUT, h: 17 }] },
-              { name: 'Schlossberg', info: "The 473 m hill the city grew around: a fortress from the 12th century, blown up by Napoleon's troops in 1809 - only the Uhrturm and the Glockenturm were spared, bought free by the citizens. Today a park, reached by the Schlossbergbahn funicular, the lift through the rock, or 260 steps.",
-                lng: 15.4377297, lat: 47.0735395, polys: [{ p: SB_OUT, h: 45 }] },
 { name: 'Styria Media Center', info: "Headquarters of the Styria media group (2015): a 67 m glass slab on Gadollaplatz, the tallest thing south of the Ring. Newsrooms of the Kleine Zeitung and Die Presse sit behind the banded glass.",
                 lng: 15.4458711, lat: 47.0568483, polys: [{ p: SM_POLY, h: 67 }] },
               { name: 'Erzherzog-Johann-Brücke', info: "The tram bridge of the old town (1965): lines 1, 3, 6 and 7 cross the Mur here between Südtiroler Platz and the Hauptplatz side.",
@@ -2719,8 +2542,6 @@
                 lng: 15.4329319, lat: 47.0772157, polys: [{ p: BR_KE, h: 4 }] },
               { name: 'Augartenbrücke', info: "Officially the Alfred-Stingl-Brücke (1977), an arch bridge by the Augarten park.",
                 lng: 15.434583, lat: 47.0642209, polys: [{ p: BR_AS, h: 4 }] },
-              { name: 'Schloßbergbahn', info: "The funicular up the west flank of the Schlossberg since 1894: 212 m of track at up to 61% gradient, from the Kaiser-Franz-Josef-Kai to the summit by the Glockenturm. Blue cars, a little over a minute per ride.",
-                lng: 15.4358481, lat: 47.0755124, polys: [{ p: FUN_OUT, h: 60 }] },
 { name: 'Kastner & Öhler', info: "Austria's grand old department store (founded 1873; this Sackstraße building 1914) at the foot of the Schlossberg. Since 2010 the folded glass roofscape by Nieto Sobejano crowns it, with the Freiblick rooftop café looking straight at the Uhrturm.",
                 lng: 15.436842, lat: 47.0718378, polys: [{ p: KO_POLY, h: 24 }] },
               { name: 'Bertha-von-Suttner-Friedensbrücke', info: "The southern tram bridge over the Mur between Karlau and Schönau - an arch bridge carrying line 5 toward Puntigam.",
