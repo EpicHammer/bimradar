@@ -2255,7 +2255,16 @@
               const i = Math.max(0, Math.min(n - 2, Math.floor(fi))), j = Math.max(0, Math.min(n - 2, Math.floor(fj)));
               const a = fi - i, b = fj - j, H = (r, c) => D.h[r * n + c];
               const z = H(i, j) * (1 - a) * (1 - b) + H(i, j + 1) * (1 - a) * b + H(i + 1, j) * a * (1 - b) + H(i + 1, j + 1) * a * b;
-              return Math.max(0, z - sbFloor(fj / (n - 1), fi / (n - 1)));
+              const h0 = Math.max(0, z - sbFloor(fj / (n - 1), fi / (n - 1)));
+              // 25 m cells average the cliffs away: the flanks come out too soft and
+              // the Uhrturm terrace ~45 m too low (every DEM says 405 m there; the
+              // tower stands at ~450). Steepen the profile, and enforce the terrace
+              // with a plateau bump that blends out over 80 m — which also turns
+              // the south and west faces into the cliffs they really are.
+              const HMAX = 110, shaped = HMAX * (1 - Math.pow(1 - Math.min(1, h0 / HMAX), 2.0));   // plateau up, flanks steep
+              const dE = (lon - 15.4377297) * 111320 * Math.cos(lat * Math.PI / 180), dN = (lat - 47.0735395) * 110540;
+              const t = Math.max(0, 1 - Math.hypot(dE, dN) / 80);
+              return Math.max(shaped, 88 * t * t * (3 - 2 * t));
             };
             (function () {
               const D = SB_DEM, n = D.n, F = 4, m = (n - 1) * F + 1;   // fine grid (~7 m cells)
