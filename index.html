@@ -177,7 +177,7 @@
     body.card-mode #cardpane { display: block; }
     body.card-mode .tripform, body.card-mode #results, body.card-mode #livetxt,
     body.card-mode #triperr, body.card-mode #err, body.card-mode #favrow,
-    body.card-mode #nearrow { display: none; }
+    body.card-mode #nearrow, body.card-mode #himbar { display: none; }
     .cardback { display: inline-flex; align-items: center; gap: .25rem; border: 0;
       background: transparent; color: var(--accent); font: inherit; font-size: .92rem;
       font-weight: 650; padding: 0 .3rem .55rem 0; cursor: pointer; }
@@ -425,6 +425,19 @@
       color: var(--fg); font: inherit; font-size: .84rem; font-weight: 650; padding: .3rem .95rem; }
     .followpill[hidden] { display: none; }   /* display:inline-flex would beat the UA's [hidden] rule */
     .followpill .x { color: var(--muted); font-size: 1rem; line-height: 1; }
+    .linepill { bottom: auto; top: calc(64px + env(safe-area-inset-top, 0px)); }
+    .ln.tap { cursor: pointer; }
+    .strow.tap { cursor: pointer; border-radius: 8px; margin: 0 -.35rem; padding: .1rem .35rem; transition: background .12s ease; }
+    .strow.tap:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+    .strow.tap::after { content: '\203A'; color: var(--muted); margin-left: .2rem; }
+    /* service alerts */
+    #himbar { display: grid; gap: .35rem; margin: .1rem 0 .6rem; }
+    #himbar[hidden] { display: none; }
+    .himrow { display: flex; gap: .45rem; align-items: flex-start; text-align: left; width: 100%;
+      border: 1px solid color-mix(in srgb, #d99400 45%, var(--line)); border-radius: 12px;
+      background: color-mix(in srgb, #d99400 12%, transparent); color: var(--fg); font: inherit;
+      font-size: .8rem; line-height: 1.4; padding: .45rem .7rem; cursor: pointer; }
+    .himrow .himic { color: #d99400; flex: none; }
     body.panel-half .followpill { bottom: calc(40dvh + 16px); }
 
     /* favourite stops: a scrolling shelf of H-badge icons, Apple Maps style */
@@ -523,6 +536,7 @@
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   <button class="followpill" id="followpill" hidden></button>
+  <button class="followpill linepill" id="linepill" hidden></button>
   <main>
     <button class="grabber" id="grabber" title="Panel" aria-label="Panel" aria-expanded="true">
       <span class="peek" id="peek"></span>
@@ -556,6 +570,7 @@
 
     <p class="err" id="err" aria-live="polite" hidden></p>
 
+    <div id="himbar" hidden></div>
     <div id="nearrow" hidden></div>
     <div id="favrow" hidden></div>
     <div class="tripform">
@@ -2576,7 +2591,39 @@
                 ] }
             );
 
+            // Draw-call diet for phones: every static vertex-coloured mesh is baked
+            // into world space and merged into one geometry per material kind
+            // (single- vs double-sided). Decals and window planes keep their own
+            // materials. Hundreds of draw calls become a handful.
+            (function () {
+              const buckets = new Map(), victims = [];
+              scene.updateMatrixWorld(true);
+              scene.traverse(o => {
+                if (!o.isMesh || !o.material || !o.material.vertexColors || o.material.polygonOffset) return;
+                const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+                if (!g.attributes.color || g.attributes.color.itemSize !== 3) return;
+                g.applyMatrix4(o.matrixWorld);
+                const key = o.material.side === THREE.DoubleSide ? 'double' : 'single';
+                if (!buckets.has(key)) buckets.set(key, { pos: [], col: [] });
+                const b = buckets.get(key);
+                b.pos.push(g.attributes.position.array); b.col.push(g.attributes.color.array);
+                victims.push(o);
+              });
+              for (const o of victims) { o.parent.remove(o); o.geometry.dispose(); }
+              for (const [key, b] of buckets) {
+                const n = b.pos.reduce((s, a) => s + a.length, 0);
+                const pos = new Float32Array(n), col = new Float32Array(n);
+                let k = 0;
+                for (let i = 0; i < b.pos.length; i++) { pos.set(b.pos[i], k); col.set(b.col[i], k); k += b.pos[i].length; }
+                const g = new THREE.BufferGeometry();
+                g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+                g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+                scene.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: key === 'double' ? THREE.DoubleSide : THREE.FrontSide })));
+              }
+              window.__bm3d = { scene, merged: victims.length, tris: [...buckets.values()].reduce((s, b) => s + b.pos.reduce((q, a) => q + a.length / 9, 0), 0) };
+            })();
             renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
+            if (window.__bm3d) window.__bm3d.renderer = renderer;
             renderer.autoClear = false;
             renderer.outputColorSpace = THREE.SRGBColorSpace;   // exact authored hex
           },
@@ -2691,6 +2738,7 @@
     function setTheme() {
       if (!map) return;
       clearStops(); lastStopKey = ''; clearRoute(); clearTripLine();
+      setLineFocus(null);
       map.setStyle(isDark() ? STYLE.dark : STYLE.light);
       // 'idle' fires whether setStyle diffed or fully reloaded; 'style.load'
       // only fires on a full reload — waiting on it left 3D buildings missing
@@ -2976,7 +3024,8 @@
       box.append(h, acts, document.createTextNode('Loading departures…'));
       presentCard(box, { lat: f.lat, lng: f.lng });
       try {
-        const res = await hafas('StationBoard', { type: 'DEP', stbLoc: { lid: f.lid }, maxJny: 8 });
+        const res = await boardFetch(f.lid, 8);
+        noteHim(res.common);
         const prodL = (res.common && res.common.prodL) || [];
         const rows = document.createElement('div'); rows.className = 'stops';
         for (const j of (res.jnyL || [])) rows.appendChild(depRow(prodL, j));
@@ -3035,7 +3084,8 @@
       favDep.busy = true;
       try {
         const f = FAVS[0];
-        const res = await hafas('StationBoard', { type: 'DEP', stbLoc: { lid: f.lid }, maxJny: 4 });
+        const res = await boardFetch(f.lid, 4);
+        noteHim(res.common);
         const prodL = (res.common && res.common.prodL) || [];
         const j = (res.jnyL || [])[0];
         if (j) {
@@ -3148,11 +3198,17 @@
       const ln = document.createElement('span');
       ln.className = 'ln sm'; ln.style.background = vehColor(kindOf(prod), lineName(prod));
       ln.textContent = lineName(prod);
+      ln.classList.add('tap'); ln.title = 'Show this line';
+      ln.addEventListener('click', e => { e.stopPropagation(); setLineFocus(lineName(prod)); });
       const dir = document.createElement('span');
       dir.className = 'dir'; dir.textContent = j.dirTxt || '';
       const clk = document.createElement('span');
       clk.className = 'clk'; clk.textContent = hafasTime(t) || '';
       row.append(tm, ln, dir, clk);
+      if (j.jid) {                                   // the row = this journey, like tapping the Bim
+        row.classList.add('tap'); row.setAttribute('role', 'button'); row.title = 'Show this journey';
+        row.addEventListener('click', () => showJourney(j, prod));
+      }
       return row;
     }
     const shortStop = n => (n || '').replace(/^Graz /, '');
@@ -3184,6 +3240,7 @@
       const prodL = (res.common && res.common.prodL) || [];
       const locL = (res.common && res.common.locL) || [];
       const jnyL = res.jnyL || [];
+      noteHim(res.common);
       const now = Date.now();
       const seen = new Set();
 
@@ -3560,6 +3617,80 @@
         wakeLock = null;
       }
     }
+    // service alerts (HAFAS HIM) collected from every board/feed response we
+    // already make, shown as a compact strip in the panel; tap to expand
+    const HIM = new Map();
+    function noteHim(common) {
+      for (const m of ((common && common.himL) || [])) {
+        const head = (m.head || '').replace(/<[^>]*>/g, '').trim();
+        if (!head) continue;
+        HIM.set(m.hid || head, { head, text: (m.text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
+          prio: m.prio != null ? +m.prio : 999, t: Date.now() });
+      }
+      renderHim();
+    }
+    function renderHim() {
+      const bar = $('himbar'), cut = Date.now() - 15 * 60000;
+      for (const [k, m] of HIM) if (m.t < cut) HIM.delete(k);
+      const list = [...HIM.values()].sort((a, b) => a.prio - b.prio).slice(0, 2);
+      bar.replaceChildren();
+      for (const m of list) {
+        const row = document.createElement('button');
+        row.className = 'himrow';
+        const ic = document.createElement('span'); ic.className = 'himic'; ic.setAttribute('aria-hidden', 'true'); ic.textContent = '\u26a0';
+        const tx = document.createElement('span'); tx.textContent = m.head;
+        row.append(ic, tx);
+        row.addEventListener('click', () => { const open = row.classList.toggle('open'); tx.textContent = open && m.text ? m.head + ' \u2014 ' + m.text : m.head; });
+        bar.appendChild(row);
+      }
+      bar.hidden = !list.length;
+    }
+    // cached departure boards: the VPS poller writes /api/board/<extId>.json for
+    // the busy stops; anything else (or stale) goes to HAFAS directly
+    async function boardFetch(lid, maxJny) {
+      const m = /L=(\d+)/.exec(lid || '');
+      if (m) try {
+        const r = await fetch('./api/board/' + m[1] + '.json', { cache: 'no-store' });
+        if (r.ok) { const d = await r.json(); if (d && d.res && Date.now() - d.t < 90000) return d.res; }
+      } catch (e) {}
+      return hafas('StationBoard', { type: 'DEP', stbLoc: { lid }, maxJny });
+    }
+    // line view: one line's route + vehicles stay bright, everything else dims
+    let lineFocus = null;
+    async function setLineFocus(line, jid, kind) {
+      if (lineFocus === line && !jid) line = null;
+      lineFocus = line;
+      const pill = $('linepill');
+      removeLine('linefocus');
+      if (!line) { pill.hidden = true; updateOcclusion(); return; }
+      pill.innerHTML = 'Line ' + esc(line) + ' <span class="x" aria-hidden="true">\u2715</span>';
+      pill.hidden = false;
+      updateOcclusion();
+      const v = [...vehicles.values()].find(x => x.line === line);
+      const useJid = jid || (v && v.jid);
+      if (!useJid || !map) return;
+      try {
+        const res = await hafas('JourneyDetails', { jid: useJid, getPolyline: true });
+        const poly = res.common && res.common.polyL && res.common.polyL[0];
+        if (lineFocus === line && poly && poly.crdEncYX)
+          setLine('linefocus', decodePath(poly.crdEncYX), { 'line-color': vehColor(kind || (v && v.kind) || 'bus', line), 'line-opacity': 0.85, 'line-width': 5 });
+      } catch (e) {}
+    }
+    // a departure row: the same as tapping the Bim itself when it's on the map;
+    // otherwise its line lights up with this journey's route
+    function showJourney(j, prod) {
+      const v = vehicles.get(j.jid);
+      if (v && v.marker.getMap()) {
+        openInfo(v);
+        if (map && !MOBILE_MQ.matches) {
+          const p = v.marker.getPosition();
+          map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 15.5), duration: REDUCED ? 0 : 600 });
+        }
+        return;
+      }
+      setLineFocus(lineName(prod), j.jid, kindOf(prod));
+    }
+    $('linepill').addEventListener('click', () => setLineFocus(null));
     function setFollowVehicle(jid) {
       followJid = jid;
       if (jid) { meFollow = false; $('fablocate').setAttribute('aria-pressed', 'false'); }
@@ -3661,6 +3792,7 @@
     // every map app has
     async function setTripTo(dest) {   // {name, lat, lng, lid?}
       trip.finalWalk = null;
+      saveRecent({ name: dest.name, lid: dest.lid || null, lat: dest.lat, lon: dest.lng });
       trip.to = dest.lid ? { lid: dest.lid, name: dest.name }
         : { crd: { x: Math.round(dest.lng * 1e6), y: Math.round(dest.lat * 1e6) }, name: dest.name };
       const mine = trip.to;
@@ -3753,7 +3885,7 @@
         const nlat = near.crd.y / 1e6, nlng = near.crd.x / 1e6;
         const dist = Math.round(metresBetween({ lat, lng }, { lat: nlat, lng: nlng }));
         const isTram = !!(near.pCls & 16);
-        const sb = await hafas('StationBoard', { type: 'DEP', stbLoc: { lid: near.lid }, maxJny: 3 });
+        const sb = await boardFetch(near.lid, 3);
         const prodL = (sb.common && sb.common.prodL) || [];
         const box = document.createElement('div');
         box.className = 'getthere';
@@ -3821,7 +3953,8 @@
           .sort((a, b) => a.d - b.d).slice(0, 2);
         const blocks = [];
         for (const g of near2) {
-          const sb = await hafas('StationBoard', { type: 'DEP', stbLoc: { lid: g.loc.lid }, maxJny: 6 });
+          const sb = await boardFetch(g.loc.lid, 6);
+          noteHim(sb.common);
           const prodL = (sb.common && sb.common.prodL) || [];
           const block = document.createElement('div');
           block.className = 'nearblock';
@@ -3954,7 +4087,7 @@
         }
         // NB: not el.style.opacity — MapLibre's Marker rewrites the root
         // element's opacity on every move, silently undoing it. Children are ours.
-        const o = occ ? 0.3 : '';
+        const o = occ ? 0.3 : (lineFocus && v.line !== lineFocus ? 0.18 : '');
         for (const ch of el.children) ch.style.opacity = o;
       }
     }
@@ -3994,7 +4127,7 @@
         if (poly && poly.crdEncYX) {
           clearRoute();
           setLine('route', decodePath(poly.crdEncYX),
-            { 'line-color': KIND_COLOR[v.kind](), 'line-opacity': 0.75, 'line-width': 4 });
+            { 'line-color': vehColor(v.kind, v.line), 'line-opacity': 0.85, 'line-width': 4 });
           routeLine = 'route';
         }
         if (extras) {
@@ -4049,7 +4182,8 @@
 
       const head = document.createElement('b');
       const ln = document.createElement('span');
-      ln.className = 'ln'; ln.style.background = vehColor(v.kind, v.line); ln.textContent = v.line;
+      ln.className = 'ln tap'; ln.style.background = vehColor(v.kind, v.line); ln.textContent = v.line;
+      ln.title = 'Show this line'; ln.addEventListener('click', e => { e.stopPropagation(); setLineFocus(v.line); });
       head.append(ln, document.createTextNode(v.kindName || KIND_LABEL[v.kind] || ''));
       box.appendChild(head);
 
@@ -4113,8 +4247,21 @@
     const trip = { from: null, to: null, opts: [], sel: -1 };
     const mkEl = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; };
     const suggState = { from: [], to: [] };   // latest suggestion lists, for Enter-to-pick
+    // the last destinations, offered under "Where to?" before you type
+    let RECENT = [];
+    try { RECENT = JSON.parse(localStorage.getItem('bm_recent') || '[]'); } catch (e) {}
+    function saveRecent(it) {
+      if (!it || !it.name || !isFinite(it.lat) || !isFinite(it.lon)) return;
+      RECENT = [{ name: it.name, lid: it.lid || null, lat: it.lat, lon: it.lon }]
+        .concat(RECENT.filter(r => r.name !== it.name)).slice(0, 5);
+      try { localStorage.setItem('bm_recent', JSON.stringify(RECENT)); } catch (e) {}
+    }
+    function showRecents(which) {
+      if (!RECENT.length || $(which).value.trim()) return;
+      renderSuggestions(which, RECENT.map(r => ({ ...r, kind: 'Recent', sub: '', isStop: !!r.lid, d: 0 })), $('sugg-' + which));
+    }
     function pickSuggestion(which, item) {
-      if (which === 'to') trip.finalWalk = null;
+      if (which === 'to') { trip.finalWalk = null; saveRecent(item); }
       // stops carry a HAFAS id (exact routing); places go in as coordinates
       trip[which] = item.lid
         ? { lid: item.lid, name: item.name }
@@ -4244,7 +4391,7 @@
     }
 
     async function searchLoc(q, box, which) {
-      if (!q || q.length < 2) { box.hidden = true; return; }
+      if (!q || q.length < 2) { if (!q && which === 'to' && RECENT.length) showRecents('to'); else box.hidden = true; return; }
       const [a, b] = await Promise.all([searchHafas(q), searchPhoton(q)]);
       const seen = new Set();
       const near = [...a, ...b]
@@ -4259,8 +4406,10 @@
         // stops get a 1.5 km head start: for a stop-name query the stop should lead
         .sort((x, y) => (x.d - (x.isStop ? 1.5 : 0)) - (y.d - (y.isStop ? 1.5 : 0)))
         .slice(0, 9);
+      renderSuggestions(which, near, box);
+    }
+    function renderSuggestions(which, near, box) {
       suggState[which] = near;
-
       box.replaceChildren();
       if (!near.length) {
         const none = document.createElement('div');
@@ -4305,7 +4454,7 @@
     $('from').addEventListener('blur', () => setTimeout(() => { $('sugg-from').hidden = true; $('from').setAttribute('aria-expanded', 'false'); }, 120));
     $('to').addEventListener('blur', () => setTimeout(() => { $('sugg-to').hidden = true; $('to').setAttribute('aria-expanded', 'false'); }, 120));
     $('from').addEventListener('focus', () => setArmed('from'));
-    $('to').addEventListener('focus', () => setArmed('to'));
+    $('to').addEventListener('focus', () => { setArmed('to'); showRecents('to'); });
 
     // Pin buttons arm map-picking WITHOUT focusing the field, so no keyboard pops up.
     // preventDefault on pointerdown/mousedown is what stops the focus (and the keyboard).

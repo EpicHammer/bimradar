@@ -322,4 +322,44 @@ async function main() {
   }
 }
 
+// ---- cached departure boards ----
+// The busy stops' StationBoards are refreshed round-robin (~one request every
+// 2 s, so each stop every ~40 s) and written as /api/board/<extId>.json —
+// the client tries that file first and falls back to HAFAS. Names resolve to
+// lids via LocMatch at startup, so the list survives HAFAS id changes.
+const HOT_STOPS = [
+  'Graz Jakominiplatz', 'Graz Hauptbahnhof', 'Graz Hauptplatz', 'Graz Südtiroler Platz/Kunsthaus',
+  'Graz Andreas-Hofer-Platz', 'Graz Griesplatz', 'Graz Dietrichsteinplatz', 'Graz Geidorfplatz',
+  'Graz Jakominigürtel', 'Graz Brauhaus Puntigam', 'Graz LKH Med Uni/Klinikum Nord', 'Graz Andritz',
+  'Graz St. Peter Schulzentrum', 'Graz Mariatrost', 'Graz Murpark', 'Graz Lendplatz',
+  'Graz Roseggerhaus', 'Graz Wetzelsdorf', 'Graz Reininghaus', 'Graz Uni/Mensa',
+  'Graz Steyrergasse', 'Graz Finanzamt', 'Graz Schloßbergplatz/Murinsel', 'Graz Eggenberg/UKH'
+];
+async function boards() {
+  const dir = require('node:path').dirname(OUT) + '/board';
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+  const stops = [];
+  for (const name of HOT_STOPS) {
+    try {
+      const res = await gate('LocMatch', { input: { field: 'S', loc: { type: 'S', name }, maxLoc: 3 } });
+      const hit = ((res.match && res.match.locL) || []).find(l => l.type === 'S' && l.lid && /L=\d+/.test(l.lid));
+      if (hit) stops.push({ name: hit.name, lid: hit.lid, ext: /L=(\d+)/.exec(hit.lid)[1] });
+      else console.error('boards: no stop for ' + name);
+    } catch (e) { console.error('boards: LocMatch failed for ' + name); }
+    await sleep(1200);
+  }
+  console.error('boards: caching ' + stops.length + ' stops');
+  for (let i = 0; ; i = (i + 1) % Math.max(1, stops.length)) {
+    const s = stops[i];
+    if (s) try {
+      const res = await gate('StationBoard', { type: 'DEP', stbLoc: { lid: s.lid }, maxJny: 12 });
+      const tmp = dir + '/' + s.ext + '.json.tmp';
+      fs.writeFileSync(tmp, JSON.stringify({ t: Date.now(), name: s.name, res }));
+      fs.renameSync(tmp, dir + '/' + s.ext + '.json');
+    } catch (e) { /* next round */ }
+    await sleep(stops.length ? 2000 : 30000);
+  }
+}
+
 main();
+boards();
