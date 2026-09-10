@@ -1892,7 +1892,8 @@
             hbSlab(scalePoly(HB_HALL, 1.06), 14, 0.9, 0xeceff0, 0.84, 0.26);
             // glazed entrance face (the short east side toward Europaplatz) and the
             // blue Kogler band across it
-            hbSlab([[28.3,17.9],[22.3,39.9],[22.8,40.0],[28.8,18.0]], 1.5, 11, HBGLASS, 0.78, 0.3);
+            // at night the hall front is lit from inside — warm glass, not sky-blue
+            hbSlab([[28.3,17.9],[22.3,39.9],[22.8,40.0],[28.8,18.0]], 1.5, 11, isDark() ? 0xe3c06a : HBGLASS, isDark() ? 0.95 : 0.78, 0.3);
             hbSlab([[28.85,18.05],[22.85,40.05],[23.2,40.15],[29.2,18.15]], 10.6, 1.2, 0x2b5ea7, 0.8, 0.3);
             // front canopy along the hall, on three slim columns
             hbSlab(HB_FRONT, 5.2, 0.45, HBSTEEL, 0.82, 0.28);
@@ -1911,7 +1912,7 @@
               }
               const g = new THREE.ExtrudeGeometry(s, { depth: 1.0, bevelEnabled: false });
               g.rotateX(-Math.PI / 2);
-              const plate = facet(g, 0xf2c31c, 0.7, 0.42);
+              const plate = facet(g, isDark() ? 0xffd23a : 0xf2c31c, isDark() ? 0.92 : 0.7, 0.42);   // floodlit at night
               plate.position.y = 6.0; hbz.add(plate);
               hbSlab(HB_ELL, 6.1, 0.5, HBGLASS, 0.8, 0.3);          // glass in the skylight hole
               const cx = 63.8, cy = 32.0;
@@ -1929,6 +1930,8 @@
             hbSlab(HB_P1, 5.8, 0.5, HBPLAT, 0.8, 0.3);
             hbSlab(HB_PC, 5.8, 0.5, HBPLAT, 0.8, 0.3);
             hbSlab(HB_PSW, 5.8, 0.5, HBPLAT, 0.8, 0.3);
+            // night: the platforms glow warm under their canopies
+            if (isDark()) for (const P of [HB_P1, HB_PC, HB_PSW]) hbSlab(P, 0.2, 0.15, 0xb6924a, 1.0, 0.1);
             hbRow([39.7, -213], [-78.9, 231.5], 18, 5.8);      // platform 1 (Hausbahnsteig)
             hbRow([-21.5, -59.5], [-88.9, 190], 18, 5.8);      // platforms 2/3
             hbRow([-37.7, -62.5], [-104, 185], 18, 5.8);       // platforms 4/5
@@ -2334,7 +2337,7 @@
               const body = extrudeFoot(SM_POLY, 55, dark ? 0x5f7d93 : 0x8fb0c4, 0.72, 0.4);
               body.position.y = 12; smc.add(body);
               for (let y = 16; y < 67; y += 4) {                                                        // floor bands
-                const band = extrudeFoot(scalePoly(SM_POLY, 1.012), 0.45, 0x3d4b56, 0.7, 0.3);
+                const band = extrudeFoot(scalePoly(SM_POLY, 1.012), 0.45, dark ? 0xd9c27a : 0x3d4b56, dark ? 0.95 : 0.7, 0.3);   // lit floors at night
                 band.position.y = y; smc.add(band);
               }
               const roof = extrudeFoot(scalePoly(SM_POLY, 1.03), 1.2, 0xe8eaec, 0.84, 0.26);
@@ -2428,6 +2431,48 @@
               const mc2 = maplibregl.MercatorCoordinate.fromLngLat([lng0, lat0], 0);
               grp.position.set((mc2.x - T.x) / T.scale, 0, (mc2.y - T.y) / T.scale);
               scene.add(grp);
+            })();
+
+            // ---- Kastner & Öhler (Sackstraße; this building 1914, roofscape 2010) ----
+            // OSM relation 1270830: the five-storey department-store block at the
+            // foot of the Schlossberg. On top, Nieto Sobejano's folded glass roof
+            // landscape — a run of glazed folds with the terrace between them.
+            const KO_POLY = [[-98.6,-10.3],[-98.5,-16.9],[-97.3,-22.4],[-95.8,-24.5],[-94.6,-26.3],[-64.1,-14.4],[-64.8,-12.9],[-66,-10.4],[-47.6,-1.7],[-45,-7.6],[-42.9,-12.5],[-40.5,-18],[-36.2,-27.7],[-43.7,-31],[-45,-31.5],[-50.9,-34.1],[-47.6,-41.9],[-46.4,-44.6],[-48.7,-45.6],[-45.3,-53.4],[-44,-56.3],[-36.5,-73.5],[-23,-66],[-13.8,-61],[-11.3,-59.8],[2.8,-55.2],[6.6,-53.9],[6.8,-53.9],[4.3,-46.9],[-12.3,-53.2],[-14.6,-53.9],[-16.4,-54],[-21.5,-31.5],[-27.1,-16.2],[-25.7,-15.6],[-24.4,-15],[-18.7,-30.6],[-15.2,-45.2],[-1.5,-38.7],[4,-35],[1.1,-29.6],[-3.9,-32.2],[-6.2,-24.1],[-2.6,-22.6],[31.2,1],[20.1,13.3],[8,26.8],[-8.3,44.9],[-19.3,57],[-32.6,71.8],[-76.6,51],[-66.3,35.4],[-53.9,19.6],[-77.1,4.3],[-74.1,-2.5],[-82.9,-6.3],[-83.8,-6.7],[-84.5,-7],[-87.6,-6.2],[-93,-7.8]];
+            (function () {
+              const ko = new THREE.Group();
+              const dark = isDark();
+              ko.add(extrudeFoot(KO_POLY, 19, dark ? 0xa9a39a : 0xe9e4d8, 0.74, 0.36));
+              const plate = extrudeFoot(scalePoly(KO_POLY, 1.005), 0.8, dark ? 0x8f9290 : 0xd9d7d0, 0.8, 0.28);
+              plate.position.y = 19; ko.add(plate);
+              const GL = dark ? 0x8fb0c4 : 0xa4c3d4;
+              const fold = (E, N, len) => {                   // triangular glass prism, ridge along the block
+                const s = new THREE.Shape(); s.moveTo(-4.6, 0); s.lineTo(4.6, 0); s.lineTo(0, 4.3); s.closePath();
+                const geo = new THREE.ExtrudeGeometry(s, { depth: len, bevelEnabled: false });
+                geo.translate(0, 0, -len / 2);
+                const mesh = facet(geo, GL, 0.72, 0.42);
+                mesh.position.set(E, 19.8, -N); mesh.rotation.y = 111 * Math.PI / 180;
+                ko.add(mesh);
+              };
+              for (let k = -2; k <= 2; k++) fold(-45 - 0.36 * 11.5 * k, -6 + 0.93 * 11.5 * k, 36);
+              const mc2 = maplibregl.MercatorCoordinate.fromLngLat([15.436842, 47.0718378], 0);
+              ko.position.set((mc2.x - T.x) / T.scale, 0, (mc2.y - T.y) / T.scale);
+              scene.add(ko);
+            })();
+
+            // ---- Bertha-von-Suttner-Friedensbrücke — the tram arch bridge (Schönau/Karlau) ----
+            const BR_FR = [[-54.8,72.2],[-53.7,67.4],[-45.9,33.2],[-40.3,23.2],[-43.5,22.6],[-43.3,21.7],[-43.9,19.9],[-44.9,18.4],[-46,17.5],[-47.3,17.4],[-48.2,17.3],[-49.9,17.8],[-51,19.1],[-51.8,20.8],[-50.7,15],[-49.7,9.5],[-49.3,10.6],[-48.9,12.4],[-47.6,14],[-46.7,14.2],[-45.4,14.5],[-43.4,13.8],[-41.7,12.1],[-40.8,7.1],[-33.6,7.9],[-31.7,8.7],[-30.8,10],[-30.9,11.4],[-32.1,12.7],[-35.1,15.2],[-36.1,13.2],[-33.8,11.3],[-37.3,10.6],[-37.7,11.7],[-37.8,12.6],[-37.4,14],[-35.8,15.8],[-34.4,16.3],[-23,8.5],[-40.4,5.4],[-44.8,4.6],[-48.6,3.9],[-48.5,2.9],[-48,-0.6],[-47.6,-3.3],[-47.1,-6.8],[-46.8,-8.9],[-46.2,-13.1],[-46,-14.2],[-41.3,-13.6],[-36,-17.6],[-31.1,-19.1],[-29.7,-20.3],[-28,-21.5],[-25.2,-17],[-24.9,-16.5],[-24.8,-14.3],[-26.3,-13],[-27.9,-12.5],[-30,-12.7],[-33.3,-13.2],[-33.5,-12.4],[36.5,0.1],[36.3,-0.3],[31.8,-1],[30.4,-2.4],[29.8,-4.2],[30.4,-5.5],[32.4,-6.9],[35.4,-8.5],[38.1,-9.7],[38.7,-9.2],[38.9,-5.1],[40.9,-2.1],[41.7,-1],[44,2.1],[47.9,3],[47.6,4.6],[46.8,8.8],[46.4,10.8],[45.8,14],[45.4,16.4],[44.8,19.6],[44.4,21.6],[39.8,21],[34.2,25.1],[32.7,26.1],[29.4,26.2],[30.4,27.1],[29.4,27.9],[28,28.7],[25.3,24.7],[24.6,22.6],[24.9,20.8],[25.8,19.9],[27.7,19.6],[32.5,20.8],[32.9,20.2],[31.3,19.7],[-0.5,13.4],[-0.9,14.1],[-2,14.6],[-2.8,14.4],[-3.3,13.8],[-3.5,13.2],[-7.8,13],[-11.8,13.4],[-16,14.3],[-21,16.2],[-25.2,18.8],[-28.6,21.4],[-32.2,25.3],[-35.4,29.7],[-38.1,35.5],[-40,41.9],[-46.9,71.2],[-47.6,74.3],[-51.8,73.1]];
+            (function () {
+              const dark = isDark();
+              const b = new THREE.Group();
+              const deck = extrudeFoot(BR_FR, 1.3, dark ? 0x6b6e72 : 0xd2d0ca, 0.78, 0.32);
+              deck.position.y = 2.0; b.add(deck);
+              // the arch: a flat rib along the long axis, rising over mid-river
+              const rib = facet(new THREE.TorusGeometry(46, 0.9, 6, 20, Math.PI), dark ? 0xa3a8ad : 0x8d9297, 0.7, 0.35);
+              rib.scale.y = 0.22; rib.position.set(0, 2.6, 0); rib.rotation.y = Math.atan2(-16.5, 93.6);
+              b.add(rib);
+              const mc2 = maplibregl.MercatorCoordinate.fromLngLat([15.4353536, 47.0576418], 0);
+              b.position.set((mc2.x - T.x) / T.scale, 0, (mc2.y - T.y) / T.scale);
+              scene.add(b);
             })();
 
             // Occluder registry for the vehicle occlusion pass (see updateOcclusion):
@@ -2545,7 +2590,11 @@
               { name: 'Augartenbrücke', info: "Officially the Alfred-Stingl-Brücke (1977), an arch bridge by the Augarten park.",
                 lng: 15.434583, lat: 47.0642209, polys: [{ p: BR_AS, h: 4 }] },
               { name: 'Schloßbergbahn', info: "The funicular up the west flank of the Schlossberg since 1894: 212 m of track at up to 61% gradient, from the Kaiser-Franz-Josef-Kai to the summit by the Glockenturm. Blue cars, a little over a minute per ride.",
-                lng: 15.4358481, lat: 47.0755124, polys: [{ p: FUN_OUT, h: 60 }] }
+                lng: 15.4358481, lat: 47.0755124, polys: [{ p: FUN_OUT, h: 60 }] },
+{ name: 'Kastner & Öhler', info: "Austria's grand old department store (founded 1873; this Sackstraße building 1914) at the foot of the Schlossberg. Since 2010 the folded glass roofscape by Nieto Sobejano crowns it, with the Freiblick rooftop café looking straight at the Uhrturm.",
+                lng: 15.436842, lat: 47.0718378, polys: [{ p: KO_POLY, h: 24 }] },
+              { name: 'Bertha-von-Suttner-Friedensbrücke', info: "The southern tram bridge over the Mur between Karlau and Schönau - an arch bridge carrying line 5 toward Puntigam.",
+                lng: 15.4353536, lat: 47.0576418, polys: [{ p: BR_FR, h: 5 }] }
             );
 
             renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
