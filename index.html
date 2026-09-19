@@ -177,7 +177,7 @@
     body.card-mode #cardpane { display: block; }
     body.card-mode .tripform, body.card-mode #results, body.card-mode #livetxt,
     body.card-mode #triperr, body.card-mode #err, body.card-mode #favrow,
-    body.card-mode #nearrow, body.card-mode #himbar { display: none; }
+    body.card-mode #nearrow, body.card-mode #himbar, body.card-mode #tripbar { display: none; }
     .cardback { display: inline-flex; align-items: center; gap: .25rem; border: 0;
       background: transparent; color: var(--accent); font: inherit; font-size: .92rem;
       font-weight: 650; padding: 0 .3rem .55rem 0; cursor: pointer; }
@@ -427,6 +427,34 @@
     .followpill .x { color: var(--muted); font-size: 1rem; line-height: 1; }
     .linepill { bottom: auto; top: calc(64px + env(safe-area-inset-top, 0px)); }
     .ln.tap { cursor: pointer; }
+    /* planner time */
+    .whenrow { display: flex; gap: .4rem; }
+    .whenrow select, .whenrow input { font: inherit; font-size: 16px; color: var(--fg); min-width: 0;
+      background: color-mix(in srgb, var(--card) 80%, transparent); border: 1px solid var(--line);
+      border-radius: 12px; padding: .45rem .6rem; }
+    .whenrow select { flex: none; } .whenrow input { flex: 1; }
+    .whenrow input[hidden] { display: none; }
+    /* your trip, live */
+    .tripbar { display: flex; align-items: center; gap: .6rem; margin-top: .6rem; cursor: pointer;
+      border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 14px;
+      background: color-mix(in srgb, var(--accent) 10%, transparent); padding: .55rem .7rem; }
+    .tripbar[hidden] { display: none; }
+    .tripbar .tbtx { flex: 1; min-width: 0; display: grid; }
+    .tripbar b { font-size: 1rem; }
+    .tripbar .tbsub { color: var(--muted); font-size: .76rem; overflow-wrap: anywhere; }
+    .veh.mine::before { content: ''; position: absolute; left: -24px; top: -24px; width: 48px; height: 48px;
+      border-radius: 50%; border: 3px solid var(--accent); animation: minepulse 1.6s ease-out infinite; pointer-events: none; }
+    @keyframes minepulse { from { transform: scale(.55); opacity: 1; } to { transform: scale(1.35); opacity: 0; } }
+    /* reminder bell */
+    .bell { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 0; background: transparent;
+      color: var(--muted); cursor: pointer; display: grid; place-items: center; padding: 0; }
+    .bell svg { width: 17px; height: 17px; }
+    .bell:hover, .bell.on { color: var(--accent); }
+    .bell.on { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+    .strow .bell { width: 28px; height: 28px; margin: -.2rem 0; align-self: center; }
+    .langbtn { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: .74rem;
+      padding: .3rem 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+    body.card-mode .langbtn { display: none; }
     .strow.tap { cursor: pointer; border-radius: 8px; margin: 0 -.35rem; padding: .1rem .35rem; transition: background .12s ease; }
     .strow.tap:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
     .strow.tap::after { content: '\203A'; color: var(--muted); margin-left: .2rem; }
@@ -611,6 +639,14 @@
         </div>
       </div>
       <p class="pickhint" id="pickhint" hidden></p>
+      <div class="whenrow">
+        <select id="tmode" aria-label="When">
+          <option value="n" data-i18="Leave now">Leave now</option>
+          <option value="d" data-i18="Depart at">Depart at</option>
+          <option value="a" data-i18="Arrive by">Arrive by</option>
+        </select>
+        <input id="twhen" type="datetime-local" aria-label="Date and time" hidden>
+      </div>
       <div class="gorow">
         <button class="go" id="go">Find connections</button>
         <button class="clr" id="clear" title="Clear search" aria-label="Clear search" hidden>
@@ -619,8 +655,10 @@
       </div>
     </div>
     <p class="err" id="triperr" aria-live="polite" hidden></p>
+    <div class="tripbar" id="tripbar" role="button" tabindex="0" hidden></div>
     <div id="results"></div>
     <p class="note" id="livetxt" aria-live="polite">connecting…</p>
+    <button class="langbtn" id="langbtn" type="button">Deutsch</button>
 
   </main>
 
@@ -628,6 +666,95 @@
   (() => {
     'use strict';
     const $ = id => document.getElementById(id);
+    // ---------- language: German on German phones, switchable, remembered ----------
+    // Keys are the English strings themselves, so untranslated text degrades to
+    // English instead of to a blank. Landmark stories stay English for now.
+    let LANG = 'en';
+    try { LANG = localStorage.getItem('bm_lang') || ((navigator.language || 'en').toLowerCase().startsWith('de') ? 'de' : 'en'); } catch (e) {}
+    const DE = {
+      " km as the crow flies":" km Luftlinie",
+      " km on foot — often simpler than a one-stop ride":" km zu Fuß — oft einfacher als eine Station zu fahren",
+      " moving":" unterwegs",
+      " vehicles moving in view · tap one for its line":" Fahrzeuge im Bild · tippe eines an",
+      " vehicles moving · ":" Fahrzeuge unterwegs · ",
+      " · then ":" · dann ",
+      "Could not get your location — type a start instead.":"Standort nicht verfügbar — bitte einen Start eingeben.",
+      "Departures unavailable.":"Abfahrten nicht verfügbar.",
+      "Destination":"Ziel",
+      "Favourites":"Favoriten",
+      "Find connections":"Verbindungen suchen",
+      "Following ":"Folge ",
+      "Geolocation is not available in this browser.":"Dieser Browser unterstützt keine Standortbestimmung.",
+      "Getting there":"Anreise",
+      "Landmark":"Sehenswürdigkeit",
+      "Line ":"Linie ",
+      "Live feed hiccup (":"Live-Daten hängen (",
+      "Loading departures…":"Lade Abfahrten…",
+      "Locating…":"Orte…",
+      "Location unavailable — check the site permission":"Standort nicht verfügbar — Berechtigung prüfen",
+      "Map point":"Kartenpunkt",
+      "My location":"Mein Standort",
+      "Near ":"Nahe ",
+      "Nearby":"In der Nähe",
+      "Next: ":"Nächster Halt: ",
+      "No connections found (":"Keine Verbindungen gefunden (",
+      "No connections found.":"Keine Verbindungen gefunden.",
+      "No departures right now.":"Derzeit keine Abfahrten.",
+      "No stop found nearby":"Keine Haltestelle in der Nähe",
+      "Nothing found near Graz":"Nichts in der Nähe von Graz gefunden",
+      "Nothing moving in this view — zoom out, or it may simply be a quiet hour":"Hier fährt gerade nichts — zoome hinaus, oder es ist einfach eine ruhige Stunde",
+      "Pick a start and a destination from the suggestions.":"Bitte Start und Ziel aus den Vorschlägen wählen.",
+      "Recent":"Zuletzt",
+      "Searching…":"Suche…",
+      "Show this journey":"Diese Fahrt anzeigen",
+      "Show this line":"Diese Linie anzeigen",
+      "Stop":"Haltestelle",
+      "Tap the map or a stop to set your destination":"Tippe auf die Karte oder eine Haltestelle für dein Ziel",
+      "Tap the map or a stop to set your start":"Tippe auf die Karte oder eine Haltestelle für deinen Start",
+      "connecting…":"verbinde…",
+      "reconnecting to the live feed…":"verbinde neu mit den Live-Daten…",
+      "tap to finish planning":"tippe, um fertig zu planen",
+      "tap to plan a trip":"tippe, um eine Fahrt zu planen",
+      "★ Favourite":"★ Favorit",
+      "☆ Save stop":"☆ Merken",
+      " Route here":" Route hierher",
+      " Just walk":" Zu Fuß gehen",
+      " Show departures near me":" Abfahrten in meiner Nähe",
+      "′ walk":"′ zu Fuß",
+      "′ walk to ":"′ zu Fuß bis ",
+      "direct":"direkt",
+      "now":"jetzt",
+      "Leave in ":"Los in ",
+      "Go now":"Jetzt losgehen",
+      "Departing now":"Fährt jetzt ab",
+      "from":"ab",
+      "on the map":"auf der Karte",
+      "not on the map yet":"noch nicht auf der Karte",
+      "Remind me before it leaves":"Vor der Abfahrt erinnern",
+      "Reminders need the installed app (Add to Home Screen)":"Erinnerungen brauchen die installierte App (Zum Home-Bildschirm)",
+      "Notifications are blocked for this site":"Mitteilungen sind für diese Seite blockiert",
+      "Reminder set: ":"Erinnerung gesetzt: ",
+      " min before it leaves":" min vor der Abfahrt",
+      "Could not set the reminder":"Erinnerung konnte nicht gesetzt werden",
+      "Leave now":"Jetzt los",
+      "Depart at":"Abfahrt um",
+      "Arrive by":"Ankunft bis",
+      "From — stop, address…":"Von — Haltestelle, Adresse…",
+      "Where to?":"Wohin?",
+      "Map":"Karte",
+      "Deutsch":"English"
+    };
+    const i18 = s => (LANG === 'de' && DE[s] != null) ? DE[s] : s;
+    function applyLang() {
+      document.documentElement.lang = LANG;
+      $('from').placeholder = i18('From \u2014 stop, address\u2026');
+      $('to').placeholder = i18('Where to?');
+      $('go').textContent = i18('Find connections');
+      if (!lastOk) $('livetxt').textContent = i18('connecting…');
+      for (const o of document.querySelectorAll('[data-i18]')) o.textContent = i18(o.dataset.i18);
+      const back = $('cardback'); if (back && back.lastChild && back.lastChild.nodeType === 3) back.lastChild.textContent = i18('Map');
+      $('langbtn').textContent = LANG === 'de' ? 'English' : 'Deutsch';
+    }
     // Keyless MapLibre vector basemaps (CARTO): no API key, no per-load billing.
     // dark-matter / positron mirror the app's own dark / light theme.
     const STYLE = {
@@ -3010,7 +3137,7 @@
       star.className = 'favbtn';
       const setStar = on => {
         star.setAttribute('aria-pressed', String(on));
-        star.textContent = on ? '★ Favourite' : '☆ Save stop';
+        star.textContent = on ? i18('★ Favourite') : i18('☆ Save stop');
       };
       setStar(favIdx(f.lid) >= 0);
       star.addEventListener('click', () => setStar(toggleFav(f)));
@@ -3018,20 +3145,20 @@
       acts.className = 'cardactions';
       const rb = document.createElement('button');
       rb.className = 'actbtn';
-      rb.innerHTML = ICON_WALK + ' Route here';
+      rb.innerHTML = ICON_WALK + i18(' Route here');
       rb.addEventListener('click', () => setTripTo({ name: f.name, lat: f.lat, lng: f.lng, lid: f.lid }));
       acts.append(rb, star);
-      box.append(h, acts, document.createTextNode('Loading departures…'));
+      box.append(h, acts, document.createTextNode(i18('Loading departures…')));
       presentCard(box, { lat: f.lat, lng: f.lng });
       try {
         const res = await boardFetch(f.lid, 8);
         noteHim(res.common);
         const prodL = (res.common && res.common.prodL) || [];
         const rows = document.createElement('div'); rows.className = 'stops';
-        for (const j of (res.jnyL || [])) rows.appendChild(depRow(prodL, j));
-        box.replaceChildren(h, acts, rows.children.length ? rows : document.createTextNode('No departures right now.'));
+        for (const j of (res.jnyL || [])) rows.appendChild(depRow(prodL, j, f));
+        box.replaceChildren(h, acts, rows.children.length ? rows : document.createTextNode(i18('No departures right now.')));
       } catch (e) {
-        box.replaceChildren(h, acts, document.createTextNode('Departures unavailable.'));
+        box.replaceChildren(h, acts, document.createTextNode(i18('Departures unavailable.')));
       }
     }
 
@@ -3052,7 +3179,7 @@
       row.replaceChildren();
       if (FAVS.length) {
         const head = document.createElement('div');
-        head.className = 'sechead'; head.textContent = 'Favourites';
+        head.className = 'sechead'; head.textContent = i18('Favourites');
         const scroll = document.createElement('div');
         scroll.className = 'favscroll';
         for (const f of FAVS.slice(0, 12)) {
@@ -3148,7 +3275,7 @@
         lastOk = Date.now();
         $('err').hidden = true;
       } catch (e) {
-        showErr('Live feed hiccup (' + e.message + ') — retrying…');
+        showErr(i18('Live feed hiccup (') + e.message + ') — retrying…');
       } finally {
         inFlight = false;
         updateLive();
@@ -3173,7 +3300,7 @@
     function fmtDep(t) {
       const d = minsUntil(t);
       if (d == null) return '';
-      if (d <= 0) return 'now';
+      if (d <= 0) return i18('now');
       if (d < 60) return d + '′';
       return hafasTime(t);
     }
@@ -3186,7 +3313,7 @@
       '</svg>';
     // one departure row, shared by stop cards, getting-there and nearby:
     // relative time (kept fresh by the 30 s repainter), badge, direction, clock
-    function depRow(prodL, j) {
+    function depRow(prodL, j, stop) {
       const prod = prodL[j.prodX] || {};
       const st = j.stbStop || {};
       const t = st.dTimeR || st.dTimeS;
@@ -3198,15 +3325,16 @@
       const ln = document.createElement('span');
       ln.className = 'ln sm'; ln.style.background = vehColor(kindOf(prod), lineName(prod));
       ln.textContent = lineName(prod);
-      ln.classList.add('tap'); ln.title = 'Show this line';
+      ln.classList.add('tap'); ln.title = i18('Show this line');
       ln.addEventListener('click', e => { e.stopPropagation(); setLineFocus(lineName(prod)); });
       const dir = document.createElement('span');
       dir.className = 'dir'; dir.textContent = j.dirTxt || '';
       const clk = document.createElement('span');
       clk.className = 'clk'; clk.textContent = hafasTime(t) || '';
       row.append(tm, ln, dir, clk);
+      if (stop && stop.lid && j.jid) row.appendChild(bellBtn({ lid: stop.lid, jid: j.jid, line: lineName(prod), dir: j.dirTxt || '', stop: stop.name, lead: 3 }));
       if (j.jid) {                                   // the row = this journey, like tapping the Bim
-        row.classList.add('tap'); row.setAttribute('role', 'button'); row.title = 'Show this journey';
+        row.classList.add('tap'); row.setAttribute('role', 'button'); row.title = i18('Show this journey');
         row.addEventListener('click', () => showJourney(j, prod));
       }
       return row;
@@ -3290,6 +3418,7 @@
           v.marker = makeMarker(v);
           v.marker.addListener('click', () => openInfo(v));
           vehicles.set(jid, v);
+          if (tripWatch && tripWatch.jid === jid) v.marker.el.classList.add('mine');
         } else {
           // start a glide from the current interpolated spot to the new report.
           // Heading is not set here: every frame, basePos() publishes the current
@@ -3663,7 +3792,7 @@
       const pill = $('linepill');
       removeLine('linefocus');
       if (!line) { pill.hidden = true; updateOcclusion(); return; }
-      pill.innerHTML = 'Line ' + esc(line) + ' <span class="x" aria-hidden="true">\u2715</span>';
+      pill.innerHTML = i18('Line ') + esc(line) + ' <span class="x" aria-hidden="true">\u2715</span>';
       pill.hidden = false;
       updateOcclusion();
       const v = [...vehicles.values()].find(x => x.line === line);
@@ -3678,6 +3807,97 @@
     }
     // a departure row: the same as tapping the Bim itself when it's on the map;
     // otherwise its line lights up with this journey's route
+    // ---------- your trip, live ----------
+    // Selecting a connection links the planner to the map: the vehicle you will
+    // board gets a pulsing ring, and a bar counts down to when you must LEAVE
+    // (departure minus the walk to the stop), using the feed's live delay.
+    let tripWatch = null, tripTimer = null;
+    function setTripWatch(con) {
+      const old = tripWatch && vehicles.get(tripWatch.jid);
+      if (old) old.marker.el.classList.remove('mine');
+      tripWatch = null; clearInterval(tripTimer); tripTimer = null;
+      $('tripbar').hidden = true;
+      if (!con) { updatePeekText(); return; }
+      const secs = con.secL || [], k = secs.findIndex(s => s.type === 'JNY' && s.jny && s.jny.jid);
+      if (k < 0) return;
+      const now = new Date(), ymd = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+      if (con.date && +con.date !== ymd) return;               // not today: nothing live to show
+      const s = secs[k], locL = trip.common.locL || [], prod = (trip.common.prodL || [])[s.jny.prodX] || {};
+      let walk = 0;
+      for (let i = 0; i < k; i++) {
+        const d = String((secs[i].gis && secs[i].gis.dur) || '').padStart(6, '0');
+        walk += (+d.slice(0, 2)) * 60 + (+d.slice(2, 4));
+      }
+      const loc = locL[s.dep.locX] || {};
+      tripWatch = { jid: s.jny.jid, line: lineName(prod), kind: kindOf(prod), dir: s.jny.dirTxt || '',
+        stop: shortStop(loc.name), lid: loc.lid || null, sched: s.dep.dTimeS, rt: s.dep.dTimeR || s.dep.dTimeS, walk };
+      renderTripBar();
+      tripTimer = setInterval(renderTripBar, 10000);
+    }
+    function renderTripBar() {
+      const w = tripWatch; if (!w) return;
+      const v = vehicles.get(w.jid);
+      if (v) v.marker.el.classList.add('mine');
+      let dep = minsUntil(w.rt), late = w.sched ? dep - minsUntil(w.sched) : 0;
+      if (v && v.delay != null && w.sched) { late = v.delay; dep = minsUntil(w.sched) + late; }   // the feed is fresher
+      if (dep < -3) { setTripWatch(null); return; }
+      const leave = dep - w.walk;
+      const fmt = m => m >= 60 ? Math.floor(m / 60) + ' h ' + (m % 60) + '\u2032' : m + '\u2032';
+      const head = leave > 0 ? i18('Leave in ') + fmt(leave) : dep > 0 ? i18('Go now') : i18('Departing now');
+      w.txt = head + ' \u00b7 ' + w.line + ' ' + i18('from') + ' ' + w.stop;
+      const bar = $('tripbar'); bar.replaceChildren();
+      const ln = document.createElement('span'); ln.className = 'ln'; ln.style.background = vehColor(w.kind, w.line); ln.textContent = w.line;
+      const tx = document.createElement('span'); tx.className = 'tbtx';
+      const b = document.createElement('b'); b.textContent = head;
+      const sub = document.createElement('span'); sub.className = 'tbsub';
+      sub.textContent = i18('from') + ' ' + w.stop + ' \u00b7 ' + (hafasTime(w.rt) || '') + (late > 1 ? ' (+' + late + ')' : '') +
+        (w.walk ? ' \u00b7 ' + w.walk + i18('\u2032 walk') : '') + ' \u00b7 ' + (v ? i18('on the map') : i18('not on the map yet'));
+      tx.append(b, sub);
+      bar.append(ln, tx);
+      if (w.lid) bar.appendChild(bellBtn({ lid: w.lid, jid: w.jid, line: w.line, dir: w.dir, stop: w.stop, lead: Math.min(30, w.walk + 3) }));
+      bar.hidden = false;
+      updatePeekText();
+    }
+    const openTripVehicle = () => {
+      const w = tripWatch; if (!w) return;
+      const v = vehicles.get(w.jid);
+      if (v && v.marker.getMap()) {
+        const p = v.marker.getPosition();
+        if (map) map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 15.5), duration: REDUCED ? 0 : 600 });
+        openInfo(v);
+      } else setLineFocus(w.line, w.jid, w.kind);
+    };
+    $('tripbar').addEventListener('click', openTripVehicle);
+    $('tripbar').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTripVehicle(); } });
+
+    // ---------- departure reminders (web push, one-shot) ----------
+    const BELL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.6 2.2H4.4z"/><path d="M10 20.5a2.1 2.1 0 0 0 4 0"/></svg>';
+    function bellBtn(watch) {
+      const bn = document.createElement('button');
+      bn.className = 'bell'; bn.innerHTML = BELL;
+      bn.title = i18('Remind me before it leaves'); bn.setAttribute('aria-label', bn.title);
+      bn.addEventListener('click', e => { e.stopPropagation(); remindMe(watch, bn); });
+      return bn;
+    }
+    async function remindMe(watch, bn) {
+      try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window))
+          return toast(i18('Reminders need the installed app (Add to Home Screen)'), 6000);
+        if ((await Notification.requestPermission()) !== 'granted') return toast(i18('Notifications are blocked for this site'), 5000);
+        const reg = await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          const key = (await (await fetch('./push/key', { cache: 'no-store' })).text()).trim();
+          const raw = atob(key.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((key.length + 3) % 4));
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, c => c.charCodeAt(0)) });
+        }
+        const r = await fetch('./push/watch', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sub: sub.toJSON(), watch, lang: LANG }) });
+        if (!r.ok) throw new Error(await r.text());
+        if (bn) bn.classList.add('on');
+        toast(i18('Reminder set: ') + watch.lead + i18(' min before it leaves'), 5000);
+      } catch (e) { toast(i18('Could not set the reminder') + ' (' + (e && e.message || e) + ')', 5000); }
+    }
     function showJourney(j, prod) {
       const v = vehicles.get(j.jid);
       if (v && v.marker.getMap()) {
@@ -3701,7 +3921,7 @@
       const pill = $('followpill');
       if (jid) {
         const fv = vehicles.get(jid);
-        pill.innerHTML = 'Following ' + esc(fv ? fv.line : '') +
+        pill.innerHTML = i18('Following ') + esc(fv ? fv.line : '') +
           ' <span class="x" aria-hidden="true">✕</span>';
         pill.hidden = false;
       } else pill.hidden = true;
@@ -3849,7 +4069,7 @@
       node.className = 'iw lmcard';
       const title = (part && part.n) || L.name;
       const kind = document.createElement('div');
-      kind.className = 'lmkind'; kind.textContent = 'Landmark';
+      kind.className = 'lmkind'; kind.textContent = i18('Landmark');
       const h = document.createElement('b'); h.textContent = title;
       node.append(kind, h);
       if (part && part.n) {
@@ -3864,7 +4084,7 @@
       acts.className = 'cardactions';
       const rb = document.createElement('button');
       rb.className = 'actbtn';
-      rb.innerHTML = ICON_WALK + ' Route here';
+      rb.innerHTML = ICON_WALK + i18(' Route here');
       rb.addEventListener('click', () => setTripTo({ name: title, lat: L.lat, lng: L.lng }));
       acts.appendChild(rb);
       node.appendChild(acts);
@@ -3890,7 +4110,7 @@
         const box = document.createElement('div');
         box.className = 'getthere';
         const head = document.createElement('div');
-        head.className = 'sechead'; head.textContent = 'Getting there';
+        head.className = 'sechead'; head.textContent = i18('Getting there');
         const srow = document.createElement('button');
         srow.className = 'gtstop';
         const badge = document.createElement('span');
@@ -3898,7 +4118,7 @@
         badge.innerHTML = hBadgeSVG(isTram ? cssv('--tram') : '#5b6472');
         const nm = document.createElement('span'); nm.textContent = shortStop(near.name);
         const gd = document.createElement('span');
-        gd.className = 'gd'; gd.textContent = dist + ' m · ' + Math.max(1, Math.round(dist * 1.3 / 80)) + '′ walk';
+        gd.className = 'gd'; gd.textContent = dist + ' m · ' + Math.max(1, Math.round(dist * 1.3 / 80)) + i18('′ walk');
         srow.append(badge, nm, gd);
         srow.addEventListener('click', () =>
           openStopData({ lid: near.lid, name: shortStop(near.name), tram: isTram, lat: nlat, lng: nlng }));
@@ -3984,7 +4204,7 @@
         }
         if (blocks.length) {
           const head = document.createElement('div');
-          head.className = 'sechead'; head.textContent = 'Nearby';
+          head.className = 'sechead'; head.textContent = i18('Nearby');
           row.replaceChildren(head, ...blocks);
           row.hidden = false;
         }
@@ -3995,12 +4215,12 @@
     function renderNearbyAsk() {
       const row = $('nearrow');
       const head = document.createElement('div');
-      head.className = 'sechead'; head.textContent = 'Nearby';
+      head.className = 'sechead'; head.textContent = i18('Nearby');
       const b = document.createElement('button');
       b.className = 'nearask';
       b.innerHTML =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3"/></svg>' +
-        ' Show departures near me';
+        i18(' Show departures near me');
       b.addEventListener('click', () => {
         if (!navigator.geolocation) return;
         b.disabled = true;
@@ -4010,7 +4230,7 @@
           refreshNearby(true);
         }, () => {
           row.hidden = true;
-          toast('Location unavailable — check the site permission');
+          toast(i18('Location unavailable — check the site permission'));
         }, { enableHighAccuracy: false, timeout: 10000 });
       });
       row.replaceChildren(head, b);
@@ -4096,11 +4316,11 @@
       const n = [...vehicles.values()].filter(v => filters[chipOf(v.kind)]).length;
       if (document.body.classList.contains('panel-peek')) updatePeek();
       if (!fresh) {
-        $('livetxt').textContent = lastOk ? 'reconnecting to the live feed…' : 'connecting…';
+        $('livetxt').textContent = lastOk ? i18('reconnecting to the live feed…') : i18('connecting…');
       } else if (n > 0) {
-        $('livetxt').textContent = n + ' vehicles moving in view · tap one for its line';
+        $('livetxt').textContent = n + i18(' vehicles moving in view · tap one for its line');
       } else {
-        $('livetxt').textContent = 'Nothing moving in this view — zoom out, or it may simply be a quiet hour';
+        $('livetxt').textContent = i18('Nothing moving in this view — zoom out, or it may simply be a quiet hour');
       }
     }
     // HAFAS ships routes as Google-encoded polylines (lat,lng order, 1e5 precision)
@@ -4183,7 +4403,7 @@
       const head = document.createElement('b');
       const ln = document.createElement('span');
       ln.className = 'ln tap'; ln.style.background = vehColor(v.kind, v.line); ln.textContent = v.line;
-      ln.title = 'Show this line'; ln.addEventListener('click', e => { e.stopPropagation(); setLineFocus(v.line); });
+      ln.title = i18('Show this line'); ln.addEventListener('click', e => { e.stopPropagation(); setLineFocus(v.line); });
       head.append(ln, document.createTextNode(v.kindName || KIND_LABEL[v.kind] || ''));
       box.appendChild(head);
 
@@ -4210,7 +4430,7 @@
       if (v.nextStop) {
         const nx = document.createElement('div');
         nx.className = 'next';
-        nx.textContent = 'Next: ' + v.nextStop + (v.nextTime ? ' · ' + v.nextTime : '');
+        nx.textContent = i18('Next: ') + v.nextStop + (v.nextTime ? ' · ' + v.nextTime : '');
         box.appendChild(nx);
       }
 
@@ -4258,7 +4478,7 @@
     }
     function showRecents(which) {
       if (!RECENT.length || $(which).value.trim()) return;
-      renderSuggestions(which, RECENT.map(r => ({ ...r, kind: 'Recent', sub: '', isStop: !!r.lid, d: 0 })), $('sugg-' + which));
+      renderSuggestions(which, RECENT.map(r => ({ ...r, kind: i18('Recent'), sub: '', isStop: !!r.lid, d: 0 })), $('sugg-' + which));
     }
     function pickSuggestion(which, item) {
       if (which === 'to') { trip.finalWalk = null; saveRecent(item); }
@@ -4288,8 +4508,8 @@
       }
       $('pickhint').hidden = !which;
       if (which) $('pickhint').textContent = which === 'from'
-        ? 'Tap the map or a stop to set your start'
-        : 'Tap the map or a stop to set your destination';
+        ? i18('Tap the map or a stop to set your start')
+        : i18('Tap the map or a stop to set your destination');
     }
     function dropPin(which, pos, label) {
       if (pins[which]) pins[which].setMap(null);
@@ -4305,13 +4525,13 @@
     // pick a point on the map: label it by the nearest stop when there is one
     async function pickPoint(which, latLng) {
       const crd = { x: Math.round(latLng.lng * 1e6), y: Math.round(latLng.lat * 1e6) };
-      let name = 'Map point';
+      let name = i18('Map point');
       try {
         const res = await hafas('LocGeoPos', {
           ring: { cCrd: crd, maxDist: 350, minDist: 0 }, getStops: true, getPOIs: false, maxLoc: 1
         });
         const near = (res.locL || []).find(l => l.type === 'S');
-        if (near) name = 'Near ' + shortStop(near.name);
+        if (near) name = i18('Near ') + shortStop(near.name);
       } catch (e) {}
       if (which === 'to') trip.finalWalk = null;
       trip[which] = { crd, name };
@@ -4356,7 +4576,7 @@
         return ((res.match && res.match.locL) || []).filter(l => l.lid && l.crd).map(l => ({
           name: l.name,
           sub: '',
-          kind: l.type === 'S' ? 'Stop' : l.type === 'A' ? 'Adresse' : 'POI',
+          kind: l.type === 'S' ? i18('Stop') : l.type === 'A' ? 'Adresse' : 'POI',
           isStop: l.type === 'S',
           lid: l.lid,
           lat: l.crd.y / 1e6, lon: l.crd.x / 1e6
@@ -4414,7 +4634,7 @@
       if (!near.length) {
         const none = document.createElement('div');
         none.className = 'nores';
-        none.textContent = 'Nothing found near Graz';
+        none.textContent = i18('Nothing found near Graz');
         box.appendChild(none);
         box.hidden = false;
         return;
@@ -4480,39 +4700,55 @@
     });
 
     $('usegeo').addEventListener('click', () => {
-      if (!navigator.geolocation) return showTripErr('Geolocation is not available in this browser.');
-      $('from').value = 'Locating…';
+      if (!navigator.geolocation) return showTripErr(i18('Geolocation is not available in this browser.'));
+      $('from').value = i18('Locating…');
       navigator.geolocation.getCurrentPosition(pos => {
         trip.from = { crd: { x: Math.round(pos.coords.longitude * 1e6), y: Math.round(pos.coords.latitude * 1e6) },
-                      name: 'My location' };
-        $('from').value = 'My location';
-        dropPin('from', { lat: pos.coords.latitude, lng: pos.coords.longitude }, 'My location');
-      }, () => { $('from').value = ''; showTripErr('Could not get your location — type a start instead.'); },
+                      name: i18('My location') };
+        $('from').value = i18('My location');
+        dropPin('from', { lat: pos.coords.latitude, lng: pos.coords.longitude }, i18('My location'));
+      }, () => { $('from').value = ''; showTripErr(i18('Could not get your location — type a start instead.')); },
       { enableHighAccuracy: true, timeout: 8000 });
     });
 
     function showTripErr(m) { $('triperr').textContent = m; $('triperr').hidden = false; }
     const locArg = o => o.lid ? { lid: o.lid } : { type: 'C', name: o.name, crd: o.crd };
 
+    // "Depart at" / "Arrive by": HAFAS takes outDate/outTime plus a direction flag
+    function whenArgs() {
+      const mode = $('tmode').value, v = $('twhen').value;
+      if (mode === 'n' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(v)) return {};
+      return { outDate: v.slice(0, 10).replace(/-/g, ''), outTime: v.slice(11, 16).replace(':', '') + '00', outFrwd: mode === 'd' };
+    }
+    $('tmode').addEventListener('change', () => {
+      const on = $('tmode').value !== 'n';
+      $('twhen').hidden = !on;
+      if (on && !$('twhen').value) {
+        const d = new Date(Date.now() + 15 * 60000), p = n => String(n).padStart(2, '0');
+        $('twhen').value = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+      }
+    });
     async function planTrip() {
-      if (!trip.from || !trip.to) return showTripErr('Pick a start and a destination from the suggestions.');
+      setTripWatch(null);
+      if (!trip.from || !trip.to) return showTripErr(i18('Pick a start and a destination from the suggestions.'));
       $('triperr').hidden = true;
-      $('go').disabled = true; $('go').textContent = 'Searching…';
+      $('go').disabled = true; $('go').textContent = i18('Searching…');
       clearTripLine();
       try {
         const res = await hafas('TripSearch', {
           depLocL: [locArg(trip.from)], arrLocL: [locArg(trip.to)],
-          getPolyline: true, getPasslist: true, maxChg: 3, numF: 5
+          getPolyline: true, getPasslist: true, maxChg: 3, numF: 5,
+          ...whenArgs()
         });
         trip.opts = res.outConL || [];
         trip.common = res.common || {};
         renderTrips();
         updateClearBtn();
       } catch (e) {
-        showTripErr('No connections found (' + e.message + ').');
+        showTripErr(i18('No connections found (') + e.message + ').');
         $('results').replaceChildren();
       } finally {
-        $('go').disabled = false; $('go').textContent = 'Find connections';
+        $('go').disabled = false; $('go').textContent = i18('Find connections');
       }
     }
     function updateClearBtn() {
@@ -4521,6 +4757,7 @@
     }
     function clearSearch() {
       trip.from = null; trip.to = null; trip.finalWalk = null; trip.opts = []; trip.sel = -1;
+      setTripWatch(null); $('tmode').value = 'n'; $('twhen').hidden = true;
       $('from').value = ''; $('to').value = '';
       $('sugg-from').hidden = true; $('sugg-to').hidden = true;
       $('results').replaceChildren();
@@ -4580,10 +4817,10 @@
           const card = document.createElement('div');
           card.className = 'opt';
           const wt = document.createElement('div'); wt.className = 'times';
-          wt.innerHTML = ICON_WALK + ' Just walk';
+          wt.innerHTML = ICON_WALK + i18(' Just walk');
           const wd = document.createElement('span'); wd.className = 'dur'; wd.textContent = '~' + mins + ' min';
           wt.appendChild(wd); card.appendChild(wt);
-          const wnote = mkEl('div', 'note', (wdist / 1000).toFixed(1) + ' km as the crow flies');
+          const wnote = mkEl('div', 'note', (wdist / 1000).toFixed(1) + i18(' km as the crow flies'));
           card.appendChild(wnote);
           // fetch the REAL walking route (FOSSGIS/OSM foot router, CORS-open);
           // beeline stays as the fallback if it fails
@@ -4595,18 +4832,19 @@
               if (!rt || !rt.geometry) return;
               walkPath = rt.geometry.coordinates.map(cc => ({ lng: cc[0], lat: cc[1] }));
               wd.textContent = '~' + Math.max(1, Math.round(rt.duration / 60)) + ' min';
-              wnote.textContent = (rt.distance / 1000).toFixed(1) + ' km on foot — often simpler than a one-stop ride';
+              wnote.textContent = (rt.distance / 1000).toFixed(1) + i18(' km on foot — often simpler than a one-stop ride');
             }).catch(() => {});
           card.addEventListener('click', () => {
             document.querySelectorAll('.opt.sel').forEach(e2 => e2.classList.remove('sel'));
             card.classList.add('sel'); trip.sel = -1;
+            setTripWatch(null);
             clearTripLine();
             const pth = walkPath || [wA, wB];
             setSegs('tripwalk', [pth],
               { 'line-color': cssv('--accent'), 'line-opacity': 0.65, 'line-width': 4, 'line-dasharray': [0.2, 2] });
             tripLine = 'trip';
             dropPin('from', wA, $('from').value || 'Start');
-            dropPin('to', wB, $('to').value || 'Destination');
+            dropPin('to', wB, $('to').value || i18('Destination'));
             const wb2 = new maplibregl.LngLatBounds();          // extend() — never assume corner order
             pth.forEach(pt => wb2.extend([pt.lng, pt.lat]));
             map.fitBounds(wb2, { padding: 80, maxZoom: 16.5 });
@@ -4614,7 +4852,7 @@
           box.appendChild(card);
         }
       }
-      if (!trip.opts.length) { box.appendChild(mkEl('p', 'note', 'No connections found.')); return; }
+      if (!trip.opts.length) { box.appendChild(mkEl('p', 'note', i18('No connections found.'))); return; }
 
       trip.opts.forEach((c, idx) => {
         const card = document.createElement('div');
@@ -4663,8 +4901,8 @@
 
         const meta = document.createElement('div');
         meta.className = 'meta';
-        meta.textContent = (c.chg === 0 ? 'direct' : c.chg + ' change' + (c.chg > 1 ? 's' : ''))
-          + (trip.finalWalk ? ' · then ' + trip.finalWalk.mins + '′ walk to ' + trip.finalWalk.name : '');
+        meta.textContent = (c.chg === 0 ? i18('direct') : LANG === 'de' ? c.chg + '\u00d7 umsteigen' : c.chg + ' change' + (c.chg > 1 ? 's' : ''))
+          + (trip.finalWalk ? i18(' · then ') + trip.finalWalk.mins + i18('′ walk to ') + trip.finalWalk.name : '');
         card.appendChild(meta);
 
         // detailed legs, revealed when the option is selected
@@ -4707,6 +4945,7 @@
       document.querySelectorAll('.opt.sel').forEach(e => e.classList.remove('sel'));
       card.classList.add('sel');
       trip.sel = idx;
+      setTripWatch(trip.opts[idx]);
       // draw the whole journey on the map: transit legs solid, walk legs dashed
       clearTripLine();
       const polyL = trip.common.polyL || [];
@@ -4762,7 +5001,7 @@
         const pA = coLoc(locL[cn.dep.locX]), pB = coLoc(locL[cn.arr.locX]);
         if (pA) dropPin('from', pA, $('from').value || 'Start');
         if (trip.finalWalk) dropPin('to', trip.finalWalk.to, trip.finalWalk.name);
-        else if (pB) dropPin('to', pB, $('to').value || 'Destination');
+        else if (pB) dropPin('to', pB, $('to').value || i18('Destination'));
       }
     }
 
@@ -4847,11 +5086,12 @@
       updatePeekText();
     }
     function updatePeekText() {
+      if (tripWatch && tripWatch.txt) { $('peek').textContent = tripWatch.txt; return; }
       const n = [...vehicles.values()].filter(v => filters[chipOf(v.kind)]).length;
-      const where = trip.from || trip.to ? 'tap to finish planning' : 'tap to plan a trip';
+      const where = trip.from || trip.to ? i18('tap to finish planning') : i18('tap to plan a trip');
       $('peek').textContent = favDep.txt
-        ? favDep.txt + (n ? ' · ' + n + ' moving' : '')
-        : (n ? n + ' vehicles moving · ' + where : where);
+        ? favDep.txt + (n ? ' · ' + n + i18(' moving') : '')
+        : (n ? n + i18(' vehicles moving · ') + where : where);
     }
 
     (() => {
@@ -4959,7 +5199,7 @@
       }, () => {
         $('fablocate').classList.remove('busy');
         meSetFollow(false);
-        toast('Location unavailable — check the site permission');
+        toast(i18('Location unavailable — check the site permission'));
       }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 2000 });
     }
     function meSetFollow(on) {
@@ -4998,9 +5238,9 @@
             const near = (res.locL || []).find(l => l.type === 'S' && l.crd);
             if (near) openStopData({ lid: near.lid, name: shortStop(near.name),
               lat: near.crd.y / 1e6, lng: near.crd.x / 1e6 });
-            else toast('No stop found nearby');
-          } catch (e) { toast('No stop found nearby'); }
-        }, () => toast('Location unavailable — check the site permission'));
+            else toast(i18('No stop found nearby'));
+          } catch (e) { toast(i18('No stop found nearby')); }
+        }, () => toast(i18('Location unavailable — check the site permission')));
       }
     }
 
@@ -5074,6 +5314,12 @@
     }
 
     // PWA: cache the shell for instant, installable loads (live data stays online)
+    applyLang();
+    $('langbtn').addEventListener('click', () => {
+      LANG = LANG === 'de' ? 'en' : 'de';
+      try { localStorage.setItem('bm_lang', LANG); } catch (e) {}
+      location.reload();                       // every built string re-renders in the new language
+    });
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
     }

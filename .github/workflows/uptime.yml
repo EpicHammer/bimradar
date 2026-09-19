@@ -1,0 +1,24 @@
+# External watchdog: the VPS cannot report its own death (the 20-hour memory
+# lock-up in August was only noticed by hand). GitHub mails the repo owner
+# when a scheduled workflow fails, so a red run here IS the alert.
+name: uptime
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: site answers and the live feed is fresh
+        run: |
+          set -e
+          curl -fsS -m 20 -o /dev/null https://bimradar.at/
+          curl -fsS -m 20 https://bimradar.at/api/vehicles.json -o feed.json
+          node -e '
+            const d = require("./feed.json");
+            const age = Math.round((Date.now() - d.t) / 1000);
+            const n = (d.res && d.res.jnyL || []).length;
+            console.log("feed age " + age + " s, " + n + " vehicles");
+            if (!(age >= 0 && age < 180)) { console.error("STALE FEED: the poller on the VPS has stopped writing"); process.exit(1); }
+          '

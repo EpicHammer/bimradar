@@ -42,6 +42,14 @@ async function main() {
     log('pulling…');
     log(git('pull', '--ff-only', 'origin', 'main'));
     const sha = git('rev-parse', '--short', 'HEAD');
+    // gate: the test suite must pass before ANYTHING goes live — a red run
+    // leaves the previous version serving, untouched
+    try {
+      log(execFileSync('node', [path.join(REPO, 'tools/test.js')], { encoding: 'utf8' }).trim());
+    } catch (e) {
+      log('TESTS FAILED — not deploying ' + sha + ' :: ' + ((e.stdout || '') + (e.stderr || '')).trim());
+      process.exit(4);
+    }
     log('deploying ' + sha);
 
     // backup current live app files (outside the web root — not publicly served)
@@ -73,6 +81,16 @@ async function main() {
       execFileSync('sudo', ['-n', 'systemctl', 'restart', 'bimradar-feed']);
     }
     fs.writeFileSync(hashFile, pollerHash);
+    // same rule for the push service
+    const pushHash = require('node:crypto').createHash('sha256')
+      .update(fs.readFileSync(path.join(REPO, 'tools/push_server.js'))).digest('hex');
+    const pushHashFile = path.join(BACKUPS, '.push-sha256');
+    const lastPush = fs.existsSync(pushHashFile) ? fs.readFileSync(pushHashFile, 'utf8') : null;
+    if (lastPush && lastPush !== pushHash) {
+      log('push_server.js changed since last deploy — restarting bimradar-push');
+      try { execFileSync('sudo', ['-n', 'systemctl', 'restart', 'bimradar-push']); } catch (e) { log('push restart failed: ' + e.message); }
+    }
+    fs.writeFileSync(pushHashFile, pushHash);
 
     // health check the real site; roll back the two critical files on failure
     const resp = await fetch('https://bimradar.at/?deploycheck=' + sha, { signal: AbortSignal.timeout(10000) });

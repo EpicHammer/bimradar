@@ -48,3 +48,25 @@ self.addEventListener('fetch', e => {
   }
   // everything else (tiles, Photon, fonts): straight to the network
 });
+
+// One-shot departure reminders. The push arrives EMPTY (no payload encryption
+// on the server); the text lives in a per-subscription file keyed by the
+// SHA-256 of our push endpoint.
+self.addEventListener('push', e => {
+  e.waitUntil((async () => {
+    let msg = { title: 'BimRadar', body: 'Your Bim is about to leave.' };
+    try {
+      const sub = await self.registration.pushManager.getSubscription();
+      const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sub.endpoint));
+      const hex = [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('');
+      const r = await fetch('./api/pushmsg/' + hex + '.json', { cache: 'no-store' });
+      if (r.ok) msg = await r.json();
+    } catch (err) {}
+    await self.registration.showNotification(msg.title, {
+      body: msg.body, icon: './icon-192.png?v=2', badge: './icon-192.png?v=2', tag: 'bimradar-dep' });
+  })());
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window' }).then(cs => cs[0] ? cs[0].focus() : self.clients.openWindow('./')));
+});
