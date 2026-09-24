@@ -2821,6 +2821,7 @@
         style: isDark() ? STYLE.dark : STYLE.light,
         center: cam ? [cam.lng, cam.lat] : [GRAZ.lng, GRAZ.lat], zoom: cam ? cam.z : 13,
         attributionControl: { compact: true },
+        pitch: pitched ? 45 : 0,
         dragRotate: false, pitchWithRotate: false, maxPitch: 45
       });
       // rotation is off for good — the top-down vehicle art only reads north-up
@@ -3448,9 +3449,15 @@
           const mc = [0];
           for (let k = 1; k < mp.length; k++) mc.push(mc[k - 1] + metresBetween(mp[k - 1], mp[k]));
           v.model = { pts: mp, cum: mc, total: mc[mc.length - 1], st: j.st };
-          const lp = v._lp || v.to;
+          // _lp includes the cosmetic de-overlap offset; project the real spot
+          const lp = v._lp ? (v.off ? { lat: v._lp.lat - v.off.lat, lng: v._lp.lng - v.off.lng } : v._lp) : v.to;
           const pr = lp ? projectOnPts(lp, mp, mc) : null;
           v.mDrawn = pr != null ? pr : (j.sp || 0);
+          // never drawn yet (just loaded, or offscreen): nothing to smooth from.
+          // The poller's report and the timetable routinely disagree by tens of
+          // metres, and closing that gap on screen made every vehicle lurch or
+          // freeze in the first second after load. Start on the timetable instead.
+          v.mFresh = !v._lp;
         } else v.model = null;
       }
       // remove vehicles that left the viewport / feed
@@ -3687,6 +3694,13 @@
             const tgt = modelTargetD(v.model);
             if (tgt == null) { v.model = null; p = curPos(v, now); }
             else {
+              if (v.mFresh) {
+                v.mFresh = false;
+                v.mDrawn = tgt;
+                const h0 = modelPoint(v.model, tgt).head;
+                v.head = h0; v.targetHead = h0;
+                updateVehTransform(v);                   // the icon was built with the feed's coarse heading
+              }
               const dd = tgt - v.mDrawn;
               if (Math.abs(dd) > 300) v.mDrawn = tgt;   // genuine re-anchoring: teleport
               else if (dd > 0) {
