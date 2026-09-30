@@ -2858,7 +2858,7 @@
         map.on('moveend', () => {
           if (followJid) return;
           showFeed();
-          if (!feedCovers()) poll();
+          if (!feedCovers()) poll(true);
         });
         // (no zoomend resize: the animate loop glides marker scale with the zoom)
         map.on('click', e => {
@@ -3308,9 +3308,11 @@
         jnyL: (ox.res.jnyL || []).filter(j => inView(j) && !(px && inProxyRect(j))) } });
       if (parts.length) ingest(parts);
     }
-    async function poll() {
+    // requeue: the view changed, so a poll already in flight (asked for the
+    // old view) is followed by one more instead of this one being dropped
+    async function poll(requeue) {
       if (!map) return;
-      if (inFlight) { pollAgain = true; return; }   // the view moved mid-request: go again after it
+      if (inFlight) { if (requeue === true) pollAgain = true; return; }
       inFlight = true;
       try {
         const b = map.getBounds();
