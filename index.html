@@ -2841,7 +2841,7 @@
         // one synchronous localStorage write), not five
         const onSettle = debounce(() => {
           if (!map) return;
-          poll(); loadStops(); updateOcclusion();
+          loadStops(); updateOcclusion();
           try {
             const c2 = map.getCenter();
             localStorage.setItem('bm_cam', JSON.stringify(
@@ -2849,6 +2849,17 @@
           } catch (e) {}
         }, 300);
         map.on('moveend', onSettle);
+        // Vehicles already in memory appear the moment a pan or zoom ends, not
+        // after the settle debounce plus a network round trip. Inside Graz the
+        // held proxy file answers for any view and the 7 s poll keeps it fresh;
+        // a view reaching past it asks for the rest straight away (a burst of
+        // moveends costs one request plus one queued follow-up). The chase cam
+        // moves the map every other frame, so it is left to the timer.
+        map.on('moveend', () => {
+          if (followJid) return;
+          showFeed();
+          if (!feedCovers()) poll();
+        });
         // (no zoomend resize: the animate loop glides marker scale with the zoom)
         map.on('click', e => {
           if (armed && e.lngLat) { pickPoint(armed, e.lngLat); return; }
@@ -3245,39 +3256,84 @@
     const PROXY_URL = './api/vehicles.json';
     const PROXY_RECT = { minLon: 15.30, maxLon: 15.60, minLat: 46.98, maxLat: 47.15 };
     const PROXY_MAX_AGE = 20000;
-    async function pollProxy(sw, ne) {
-      const pad = 0.003;                                  // keep vehicles just off-screen
-      if (sw.lng < PROXY_RECT.minLon - pad || ne.lng > PROXY_RECT.maxLon + pad ||
-          sw.lat < PROXY_RECT.minLat - pad || ne.lat > PROXY_RECT.maxLat + pad) return null;
+    // keep vehicles just off-screen
+    const VIEW_PAD = 0.003;
+    // The last reports, held whole: the proxy file covers all of Graz, and the
+    // direct HAFAS answer covers a view that reaches past it. A pan or zoom
+    // redraws from these at once instead of waiting a network round trip for
+    // vehicles the app already knows about. Each carries a stamp so a redraw
+    // from the same report leaves a gliding vehicle alone.
+    const feed = { proxy: null, outer: null };           // { res, t, stamp }
+    let hafasSeq = 0, pollAgain = false;
+    const proxyHolds = (sw, ne) =>
+      sw.lng >= PROXY_RECT.minLon - VIEW_PAD && ne.lng <= PROXY_RECT.maxLon + VIEW_PAD &&
+      sw.lat >= PROXY_RECT.minLat - VIEW_PAD && ne.lat <= PROXY_RECT.maxLat + VIEW_PAD;
+    const inProxyRect = j => j.pos.x / 1e6 >= PROXY_RECT.minLon && j.pos.x / 1e6 <= PROXY_RECT.maxLon &&
+      j.pos.y / 1e6 >= PROXY_RECT.minLat && j.pos.y / 1e6 <= PROXY_RECT.maxLat;
+    const freshFeed = f => f && Date.now() - f.t < PROXY_MAX_AGE ? f : null;
+    async function loadProxy() {
       const r = await fetch(PROXY_URL, { cache: 'no-store' });
       if (!r.ok) return null;
       const d = await r.json();
       if (!d || !d.res || Date.now() - d.t > PROXY_MAX_AGE) return null;   // stale — poller down?
-      const res = d.res;
-      res.jnyL = (res.jnyL || []).filter(j => j.pos &&
-        j.pos.x / 1e6 >= sw.lng - pad && j.pos.x / 1e6 <= ne.lng + pad &&
-        j.pos.y / 1e6 >= sw.lat - pad && j.pos.y / 1e6 <= ne.lat + pad);
-      return res;
+      return { res: d.res, t: d.t, stamp: 'p' + d.t };
+    }
+    function hafasRect(sw, ne) {
+      return hafas('JourneyGeoPos', {
+        maxJny: 400, onlyRT: false,
+        rect: {
+          llCrd: { x: Math.round(sw.lng * 1e6), y: Math.round(sw.lat * 1e6) },
+          urCrd: { x: Math.round(ne.lng * 1e6), y: Math.round(ne.lat * 1e6) }
+        }
+      });
+    }
+    // true when the held reports already answer for the whole current view
+    function feedCovers() {
+      const b = map && map.getBounds();
+      return !!(b && freshFeed(feed.proxy) && proxyHolds(b.getSouthWest(), b.getNorthEast()));
+    }
+    // Draw the current view's vehicles from the held reports. No network, so
+    // it runs on every settled pan or zoom; poll() refreshes the reports.
+    function showFeed() {
+      const b = map && map.getBounds();
+      if (!b) return;
+      const sw = b.getSouthWest(), ne = b.getNorthEast();
+      const inView = j => j.pos &&
+        j.pos.x / 1e6 >= sw.lng - VIEW_PAD && j.pos.x / 1e6 <= ne.lng + VIEW_PAD &&
+        j.pos.y / 1e6 >= sw.lat - VIEW_PAD && j.pos.y / 1e6 <= ne.lat + VIEW_PAD;
+      const px = freshFeed(feed.proxy), ox = freshFeed(feed.outer), parts = [];
+      if (px) parts.push({ stamp: px.stamp, res: { ...px.res, jnyL: (px.res.jnyL || []).filter(inView) } });
+      // inside Graz the proxy's reports win: they carry the street geometry
+      if (ox) parts.push({ stamp: ox.stamp, res: { ...ox.res,
+        jnyL: (ox.res.jnyL || []).filter(j => inView(j) && !(px && inProxyRect(j))) } });
+      if (parts.length) ingest(parts);
     }
     async function poll() {
-      if (!map || inFlight) return;
+      if (!map) return;
+      if (inFlight) { pollAgain = true; return; }   // the view moved mid-request: go again after it
       inFlight = true;
       try {
         const b = map.getBounds();
-        if (!b) { inFlight = false; return; }
+        if (!b) return;
         const sw = b.getSouthWest(), ne = b.getNorthEast();
-        let res = null;
-        try { res = await pollProxy(sw, ne); } catch (e) { /* fall back below */ }
-        if (!res) {
-          res = await hafas('JourneyGeoPos', {
-            maxJny: 400, onlyRT: false,
-            rect: {
-              llCrd: { x: Math.round(sw.lng * 1e6), y: Math.round(sw.lat * 1e6) },
-              urCrd: { x: Math.round(ne.lng * 1e6), y: Math.round(ne.lat * 1e6) }
-            }
-          });
-        }
-        ingest(res);
+        const beyond = !proxyHolds(sw, ne);
+        // Past Graz, HAFAS is asked for the view alongside the proxy file, so
+        // the slower of the two sets the pace, not their sum. A failed HAFAS
+        // call there still leaves the Graz vehicles updating.
+        const [px, hx] = await Promise.all([
+          loadProxy().catch(() => null),
+          beyond ? hafasRect(sw, ne).catch(e => e) : null
+        ]);
+        let outer = hx;
+        if (!px && !beyond) outer = await hafasRect(sw, ne);   // poller down: HAFAS alone
+        if (outer instanceof Error) { if (!px) throw outer; outer = null; }
+        feed.proxy = px;
+        if (px) noteHim(px.res.common);
+        if (outer) {
+          noteHim(outer.common);
+          feed.outer = { res: outer, t: Date.now(), stamp: 'h' + (++hafasSeq) };
+        } else if (!beyond) feed.outer = null;
+        showFeed();
         lastOk = Date.now();
         $('err').hidden = true;
       } catch (e) {
@@ -3285,6 +3341,7 @@
       } finally {
         inFlight = false;
         updateLive();
+        if (pollAgain) { pollAgain = false; poll(); }
       }
     }
 
@@ -3370,16 +3427,20 @@
       return (d > 0 ? '+' : '') + d + ' min';
     }
 
-    function ingest(res) {
-      const prodL = (res.common && res.common.prodL) || [];
-      const locL = (res.common && res.common.locL) || [];
-      const jnyL = res.jnyL || [];
-      noteHim(res.common);
+    // parts: [{ res, stamp }], each res with its own prodL/locL; the first
+    // part to report a journey draws it
+    function ingest(parts) {
       const now = Date.now();
       const seen = new Set();
 
+      const reports = [];
+      for (const { res, stamp } of parts) {
+        const prodL = (res.common && res.common.prodL) || [];
+        const locL = (res.common && res.common.locL) || [];
+        for (const j of res.jnyL || []) reports.push({ j, prodL, locL, stamp });
+      }
       const portions = new Set();
-      for (const j of jnyL) {
+      for (const { j, prodL, locL, stamp } of reports) {
         if (!j.pos) continue;
         const prod = prodL[j.prodX] || {};
         const kind = kindOf(prod);
@@ -3396,7 +3457,11 @@
           portions.add(pk);
         }
         const jid = j.jid;
+        if (seen.has(jid)) continue;
         seen.add(jid);
+        // already drawn from this very report (a redraw after a pan or zoom):
+        // leave it gliding — restarting the glide would slow it down
+        if (vehicles.has(jid) && vehicles.get(jid).stamp === stamp) continue;
         const to = { lat: j.pos.y / 1e6, lng: j.pos.x / 1e6 };
         const ctx = prod.prodCtx || {};
         const line = lineName(prod);
@@ -3447,6 +3512,7 @@
           v.kind = kind; v.line = line; v.dir = dir; Object.assign(v, meta);
           v.marker.setIcon(vIcon(v.kind, v.head, v.line));
         }
+        v.stamp = stamp;
         // attach/refresh the drive plan (both new and known vehicles); the
         // drawn spot is re-projected into the new plan so nothing jumps
         if (!REDUCED && j.seg && j.seg.length >= 2 && j.st && j.st.length >= 2) {

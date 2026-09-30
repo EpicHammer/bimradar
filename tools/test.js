@@ -143,6 +143,58 @@ async function pushTests() {
   ok(r.pushes.length === 1 && r.calls.length === 0, 'push: a journey on the fresh cached board does not hit HAFAS');
 }
 
+// ---- 8. vehicle feed: redraw from held reports, proxy + HAFAS merge ----
+{
+  const ctx = vm.createContext({ Math, Date, String, Number, JSON, console, Set, Map });
+  vm.runInContext(
+    'let __view = null, __drawn = [], followJid = null;\n' +
+    'const feed = { proxy: null, outer: null };\n' +
+    'const map = { getBounds: () => __view && { getSouthWest: () => ({ lng: __view[0], lat: __view[1] }), getNorthEast: () => ({ lng: __view[2], lat: __view[3] }) } };\n' +
+    'const ingest = parts => { __drawn = parts; };\n' +
+    ['PROXY_RECT', 'PROXY_MAX_AGE', 'VIEW_PAD', 'proxyHolds', 'inProxyRect', 'freshFeed', 'feedCovers', 'showFeed'].map(n => lift(script, n)).join('\n') +
+    '\nthis.run = (view, proxy, outer) => { __view = view; feed.proxy = proxy; feed.outer = outer; __drawn = null; showFeed();' +
+    ' return { covers: feedCovers(), parts: __drawn && __drawn.map(p => ({ stamp: p.stamp, jids: p.res.jnyL.map(j => j.jid) })) }; };', ctx);
+  const j = (jid, lng, lat) => ({ jid, pos: { x: Math.round(lng * 1e6), y: Math.round(lat * 1e6) } });
+  const now = Date.now();
+  const proxy = { t: now, stamp: 'p1', res: { common: {}, jnyL: [j('hbf', 15.41, 47.07), j('puntigam', 15.43, 47.01)] } };
+  const outer = { t: now, stamp: 'h1', res: { common: {}, jnyL: [j('hbf', 15.41, 47.07), j('gleisdorf', 15.71, 47.10), j('wien', 16.37, 48.21)] } };
+  const city = [15.40, 47.05, 15.46, 47.09], styria = [14.4, 46.7, 16.5, 47.8];
+
+  let r = ctx.run(city, proxy, null);
+  ok(r.covers && r.parts.length === 1 && r.parts[0].jids.join() === 'hbf', 'feed: a Graz view is drawn from the held proxy file alone');
+  r = ctx.run(styria, proxy, outer);
+  ok(!r.covers, 'feed: a view past Graz needs HAFAS');
+  ok(r.parts[0].jids.join() === 'hbf,puntigam' && r.parts[1].jids.join() === 'gleisdorf',
+    'feed: past Graz, Graz vehicles come from the proxy and HAFAS adds only those outside it');
+  r = ctx.run(styria, null, outer);
+  ok(r.parts.length === 1 && r.parts[0].jids.join() === 'hbf,gleisdorf', 'feed: with the poller down HAFAS answers for all of the view');
+  r = ctx.run(city, { ...proxy, t: now - 60000 }, null);
+  ok(!r.covers && r.parts === null, 'feed: a stale proxy file is neither drawn nor trusted to cover the view');
+}
+{
+  // ingest(): the first part to report a journey draws it, and a redraw from
+  // the same report leaves a gliding vehicle alone
+  const ctx = vm.createContext({ Math, Date, String, Number, JSON, console, Set, Map });
+  vm.runInContext(
+    'const vehicles = new Map(), REDUCED = true; let tripWatch = null;\n' +
+    'const shortStop = s => s, openInfo = () => {}, vIcon = () => null, buildGlidePath = () => null;\n' +
+    'const basePos = v => v.to, deoverlap = () => {}, applyFilter = () => {}, updateOcclusion = () => {};\n' +
+    'const makeMarker = () => ({ el: { classList: { add() {} } }, addListener() {}, setIcon() {}, setMap() {} });\n' +
+    ['lineName', 'kindOf', 'hafasTime', 'hafasMins', 'delayOf', 'metresBetween', 'ingest'].map(n => lift(script, n)).join('\n') +
+    '\nthis.vehicles = vehicles; this.ingest = ingest;', ctx);
+  const res = (...jids) => ({ common: { prodL: [{ prodCtx: { catOutL: 'Straßenbahn', line: '4' } }] },
+    jnyL: jids.map(([jid, lng]) => ({ jid, prodX: 0, pos: { x: Math.round(lng * 1e6), y: 47070000 } })) });
+  ctx.ingest([{ stamp: 'p1', res: res(['a', 15.41], ['b', 15.42]) }]);
+  const a = ctx.vehicles.get('a');
+  ok(ctx.vehicles.size === 2 && a.stamp === 'p1', 'ingest: new vehicles carry the stamp of their report');
+  a.t0 = 1;
+  ctx.ingest([{ stamp: 'p1', res: res(['a', 15.41], ['b', 15.42], ['c', 15.43]) }]);
+  ok(a.t0 === 1 && ctx.vehicles.size === 3, 'ingest: a redraw from the same report keeps the glide and adds newcomers');
+  ctx.ingest([{ stamp: 'p2', res: res(['a', 15.411]) }, { stamp: 'h1', res: res(['a', 15.5], ['d', 15.8]) }]);
+  ok(a.t0 !== 1 && a.stamp === 'p2' && a.to.lng === 15.411, 'ingest: the first part to report a journey wins');
+  ok(ctx.vehicles.size === 2 && ctx.vehicles.has('d') && !ctx.vehicles.has('b'), 'ingest: vehicles no part reports are removed');
+}
+
 pushTests().catch(e => ok(false, 'push tests threw: ' + e.message)).then(() => {
   console.log((failed ? 'FAILED ' : 'ok ') + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
