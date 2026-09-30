@@ -5175,9 +5175,13 @@
         sheet.style.transform = '';
         if (!moved) {
           if (e.currentTarget === grab) setSheet(sheetState() === 'peek' ? 'full' : 'peek');
-        } else {
-          // snap to wherever the sheet would coast to: a flick carries much
-          // further than it was dragged, so it skips past the half stop.
+        } else settle();
+        try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) {}
+      };
+      // snap to wherever the sheet would coast to: a flick carries much
+      // further than it was dragged, so it skips past the half stop.
+      function settle() {
+        {
           const o = offsets();
           const projected = curOff + vel * 220;
           // 'half' is the CARD state: for the plain trip form it shows exactly
@@ -5190,12 +5194,14 @@
             if (d < bestD) { bestD = d; best = k; }
           }
           setSheet(best);
-          // a drag mustn't fire the click of whatever chip/button it started on
-          document.addEventListener('click', ev => { ev.stopPropagation(); ev.preventDefault(); },
-            { capture: true, once: true });
+          // a drag mustn't fire the click of whatever chip/button it started on —
+          // but only that click: when no click follows (touch drags), the guard
+          // must not eat the user's NEXT tap
+          const eat = ev => { ev.stopPropagation(); ev.preventDefault(); };
+          document.addEventListener('click', eat, { capture: true, once: true });
+          setTimeout(() => document.removeEventListener('click', eat, { capture: true }), 350);
         }
-        try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) {}
-      };
+      }
       // drag targets: the handle plus the sheet's non-scrolling chrome — the
       // results list keeps native scrolling
       // cardback doubles as a drag handle: in the installed PWA the header is
@@ -5210,6 +5216,55 @@
         // window) the sheet must still settle instead of freezing mid-drag
         t.addEventListener('lostpointercapture', finish);
       }
+      // The WHOLE sheet drags, like Maps: a downward swipe while the content is
+      // scrolled to the top pulls the sheet down, an upward swipe on a sheet
+      // that isn't full pulls it up; everything else is a normal scroll. Touch
+      // events (not pointer): only a non-passive touchmove can stop the native
+      // scroll, and it must decide on the very FIRST move — later, the browser
+      // has already committed to scrolling and ignores preventDefault.
+      let tMode = 'scroll', tsX = 0, tsY = 0;
+      sheet.addEventListener('touchstart', e => {
+        tMode = 'scroll';
+        if (!isMobile() || dragging || e.touches.length !== 1) return;
+        // the handles keep their own pointer drag; fields and the sideways
+        // favourites shelf keep their native behaviour
+        if (e.target.closest('#grabber, main > header, #cardback, input, textarea, select, .favscroll')) return;
+        tsX = e.touches[0].clientX; tsY = e.touches[0].clientY; tMode = 'undecided';
+      }, { passive: true });
+      sheet.addEventListener('touchmove', e => {
+        if (tMode === 'scroll') return;
+        const t = e.touches[0], dx = t.clientX - tsX, dy = t.clientY - tsY;
+        if (tMode === 'undecided') {
+          if (dx === 0 && dy === 0) return;
+          const st = sheetState();
+          const vertical = Math.abs(dy) >= Math.abs(dx);
+          const down = dy > 0 && sheet.scrollTop <= 0, up = dy < 0 && st !== 'full';
+          if (!vertical || !(down || up)) { tMode = 'scroll'; return; }
+          tMode = 'sheet';
+          dragging = true; moved = true; document.body.classList.add('sheet-dragging');
+          startY = lastY = tsY; lastT = e.timeStamp; vel = 0;
+          startOff = curOff = offsets()[st];
+          if (st === 'full') dismissKeyboard();
+          sheet.style.transition = 'none';
+        }
+        e.preventDefault();
+        const dt = e.timeStamp - lastT;
+        if (dt > 0) vel = vel * 0.6 + ((t.clientY - lastY) / dt) * 0.4;
+        lastY = t.clientY; lastT = e.timeStamp;
+        curOff = Math.max(0, Math.min(offsets().peek, startOff + (t.clientY - startY)));
+        sheet.style.transform = 'translateY(' + curOff + 'px)';
+      }, { passive: false });
+      const touchEnd = () => {
+        if (tMode === 'sheet' && dragging) {
+          dragging = false;
+          document.body.classList.remove('sheet-dragging');
+          sheet.style.transition = ''; sheet.style.transform = '';
+          settle();
+        }
+        tMode = 'scroll';
+      };
+      sheet.addEventListener('touchend', touchEnd);
+      sheet.addEventListener('touchcancel', touchEnd);
     })();
     // floating map buttons (phone): 3D mirrors the sheet's toggle; locate-me
     // drops a blue dot at the GPS fix and flies there.
