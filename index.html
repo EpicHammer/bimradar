@@ -1838,16 +1838,18 @@
               roofG.rotateX(-Math.PI / 2);
               const roofM = facet(roofG, TUTILE, 0.58, 0.45);
               roofM.position.y = 15; tug.add(roofM);
-              // domed pavilions: cream up to 21.5 m, slate pyramid cap on top
+              // domed pavilions: cream up to 21.5 m, slate pyramid cap on top. Offset
+              // 0.8 m, twice the wings' 0.4: where a pavilion sits on the outer wall,
+              // equal offsets put its wall and the red roof's edge in one plane (sawtooth flicker)
               for (const d of TU_DOMES) {
-                tug.add(extrudeFoot(offsetPoly(d, 0.4), 21.5, TUCREAM, 0.72, 0.42));
+                tug.add(extrudeFoot(offsetPoly(d, 0.8), 21.5, TUCREAM, 0.72, 0.42));
                 let cx = 0, cy = 0; d.forEach(p => { cx += p[0]; cy += p[1]; }); cx /= d.length; cy /= d.length;
                 const r = Math.max(...d.map(p => Math.hypot(p[0] - cx, p[1] - cy)));
                 const cap = facet(new THREE.ConeGeometry(r * 1.02, Math.max(3, r * 0.55), 4), TUSLATE, 0.58, 0.5);
                 cap.rotation.y = Math.PI / 4 - 0.31; cap.position.set(cx, 21.5 + Math.max(3, r * 0.55) / 2, -cy); tug.add(cap);
               }
               // the crowned centre of the north wing: cream to 23.4 m, slate mansard, gilt finial
-              tug.add(extrudeFoot(offsetPoly(TU_MANS, 0.4), 23.4, TUCREAM, 0.72, 0.42));
+              tug.add(extrudeFoot(offsetPoly(TU_MANS, 0.8), 23.4, TUCREAM, 0.72, 0.42));
               const mans = extrudeFoot(scalePoly(TU_MANS, 0.86), 2.4, TUSLATE, 0.6, 0.45);
               mans.position.y = 23.4; tug.add(mans);
               let mx = 0, my = 0; TU_MANS.forEach(p => { mx += p[0]; my += p[1]; }); mx /= TU_MANS.length; my /= TU_MANS.length;
