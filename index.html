@@ -1790,43 +1790,65 @@
             const TU_OUT = [[-36.0,-30.4],[-43.1,-28.2],[-44.1,-27.9],[-41.4,-19.3],[-40.5,-19.6],[-33.7,2.3],[-34.4,2.6],[-30.4,15.8],[-29.7,15.6],[-24.0,34.0],[-23.6,35.5],[-23.0,37.4],[-23.8,37.7],[-20.6,48.0],[-9.9,44.7],[-10.3,43.6],[-6.5,42.4],[1.7,40.0],[3.0,44.2],[9.1,42.4],[15.1,40.6],[22.5,38.4],[21.2,34.1],[29.3,31.6],[34.8,30.0],[34.9,30.4],[42.0,28.3],[44.2,27.6],[41.3,18.3],[40.0,18.6],[38.9,15.0],[33.4,-3.2],[34.3,-3.4],[33.1,-7.3],[30.3,-16.7],[29.3,-16.4],[22.7,-37.9],[23.7,-38.3],[20.8,-47.8],[19.8,-47.5],[12.5,-45.3],[11.7,-48.0],[-12.6,-40.7],[-36.9,-33.3]];
             const TU_HOLE = [[-20.0,-1.7],[-2.7,-6.9],[-0.8,-7.4],[-7.1,-28.0],[-8.8,-27.5],[-26.3,-22.2],[-22.9,-11.2]];
             const tug = new THREE.Group();
-            const TUCREAM = 0xe6d9b8, TUTILE = 0x9a5a44;
+            const TUCREAM = 0xe6d9b8, TUTILE = 0x9a5a44, TUSLATE = 0x5a6066;
+            // CARTO extrudes this building's OSM parts itself (18 m wings, 21 m
+            // domes, a 23 m mansard) and those can't be hidden by id: CARTO merges
+            // equal-height buildings per tile under one id (the 18 m group's id is
+            // Halle A at the Messe). So the model ENCLOSES them: outer walls a hair
+            // outside, courtyard walls a hair inside, every top a bit higher.
+            // Coplanar faces were the white streaks on the red roof.
+            const TU_DOMES = [
+              [[-3.3,-30.5],[-10.2,-28.5],[-11.9,-34.1],[-5.1,-36.2]],                                          // south front, over the entrance
+              [[-9.9,44.7],[-10.3,43.6],[-13.1,34.4],[-23,37.4],[-23.8,37.7],[-20.6,48]],                        // NW corner
+              [[34.9,30.4],[34.8,30],[32,21],[40,18.6],[41.3,18.3],[44.2,27.6],[42,28.3]],                       // NE corner
+              [[-40.5,-19.6],[-33.3,-21.7],[-31.8,-22.2],[-34.4,-30.8],[-36,-30.4],[-43.1,-28.2],[-44.1,-27.9],[-41.4,-19.3]],   // SW corner
+              [[12.5,-45.3],[11.4,-44.9],[14.3,-35.4],[15.5,-35.8],[22.7,-37.9],[23.7,-38.3],[20.8,-47.8],[19.8,-47.5]]          // SE corner
+            ];
+            // true polygon offset (every edge moved out by d, mitred corners) — scaling
+            // about the centroid moves the outline's little inward notches the wrong way
+            const offsetPoly = (poly, d) => {
+              let A = 0; poly.forEach((p, k) => { const q = poly[(k + 1) % poly.length]; A += p[0] * q[1] - q[0] * p[1]; });
+              const s = A > 0 ? 1 : -1, n = poly.length;
+              return poly.map((p, k) => {
+                const a = poly[(k - 1 + n) % n], b = poly[(k + 1) % n];
+                const e1 = [p[0] - a[0], p[1] - a[1]], e2 = [b[0] - p[0], b[1] - p[1]];
+                const l1 = Math.hypot(e1[0], e1[1]) || 1, l2 = Math.hypot(e2[0], e2[1]) || 1;
+                const n1 = [s * e1[1] / l1, -s * e1[0] / l1], n2 = [s * e2[1] / l2, -s * e2[0] / l2];
+                let mx = n1[0] + n2[0], my = n1[1] + n2[1]; const ml = Math.hypot(mx, my) || 1; mx /= ml; my /= ml;
+                const k2 = Math.min(3, 1 / Math.max(0.2, mx * n1[0] + my * n1[1]));
+                return [p[0] + mx * d * k2, p[1] + my * d * k2];
+              });
+            };
+            const TU_MANS = [[1.7,40],[-2.2,27.4],[1.8,26.3],[13.6,22.7],[17.3,21.6],[21.2,34.1],[22.5,38.4],[15.1,40.6],[12,41.5],[9.1,42.4],[3,44.2]];
             (function () {
-              const s = new THREE.Shape();
-              TU_OUT.forEach((p, i) => i ? s.lineTo(p[0], p[1]) : s.moveTo(p[0], p[1]));
-              s.closePath();
-              const h = new THREE.Path();
-              TU_HOLE.forEach((p, i) => i ? h.lineTo(p[0], p[1]) : h.moveTo(p[0], p[1]));
-              h.closePath(); s.holes.push(h);
-              const bodyG = new THREE.ExtrudeGeometry(s, { depth: 15, bevelEnabled: false });
+              const ring = (pts, s) => pts.forEach((p, k) => k ? s.lineTo(p[0], p[1]) : s.moveTo(p[0], p[1]));
+              const withHole = () => {
+                const s = new THREE.Shape(); ring(offsetPoly(TU_OUT, 0.4), s); s.closePath();
+                const hp = new THREE.Path(); ring(offsetPoly(TU_HOLE, -0.4), hp); hp.closePath(); s.holes.push(hp);
+                return s;
+              };
+              const bodyG = new THREE.ExtrudeGeometry(withHole(), { depth: 15, bevelEnabled: false });
               bodyG.rotateX(-Math.PI / 2); tug.add(facet(bodyG, TUCREAM, 0.72, 0.42));
-              const s2 = new THREE.Shape();
-              TU_OUT.forEach((p, i) => i ? s2.lineTo(p[0], p[1]) : s2.moveTo(p[0], p[1]));
-              s2.closePath();
-              const h2 = new THREE.Path();
-              TU_HOLE.forEach((p, i) => i ? h2.lineTo(p[0], p[1]) : h2.moveTo(p[0], p[1]));
-              h2.closePath(); s2.holes.push(h2);
-              const roofG = new THREE.ExtrudeGeometry(s2, { depth: 3, bevelEnabled: false });
+              const roofG = new THREE.ExtrudeGeometry(withHole(), { depth: 3.7, bevelEnabled: false });   // top at 18.7 > CARTO's 18
               roofG.rotateX(-Math.PI / 2);
               const roofM = facet(roofG, TUTILE, 0.58, 0.45);
               roofM.position.y = 15; tug.add(roofM);
+              // domed pavilions: cream up to 21.5 m, slate pyramid cap on top
+              for (const d of TU_DOMES) {
+                tug.add(extrudeFoot(offsetPoly(d, 0.4), 21.5, TUCREAM, 0.72, 0.42));
+                let cx = 0, cy = 0; d.forEach(p => { cx += p[0]; cy += p[1]; }); cx /= d.length; cy /= d.length;
+                const r = Math.max(...d.map(p => Math.hypot(p[0] - cx, p[1] - cy)));
+                const cap = facet(new THREE.ConeGeometry(r * 1.02, Math.max(3, r * 0.55), 4), TUSLATE, 0.58, 0.5);
+                cap.rotation.y = Math.PI / 4 - 0.31; cap.position.set(cx, 21.5 + Math.max(3, r * 0.55) / 2, -cy); tug.add(cap);
+              }
+              // the crowned centre of the north wing: cream to 23.4 m, slate mansard, gilt finial
+              tug.add(extrudeFoot(offsetPoly(TU_MANS, 0.4), 23.4, TUCREAM, 0.72, 0.42));
+              const mans = extrudeFoot(scalePoly(TU_MANS, 0.86), 2.4, TUSLATE, 0.6, 0.45);
+              mans.position.y = 23.4; tug.add(mans);
+              let mx = 0, my = 0; TU_MANS.forEach(p => { mx += p[0]; my += p[1]; }); mx /= TU_MANS.length; my /= TU_MANS.length;
+              const fin = facet(new THREE.SphereGeometry(0.5, 8, 6), 0xcaa233, 1, 0.1);
+              fin.position.set(mx, 26.3, -my); tug.add(fin);
             })();
-            const tuRis = facet(new THREE.BoxGeometry(18, 21, 9), TUCREAM, 0.72, 0.42);
-            tuRis.position.set(-9, 10.5, -42); tuRis.rotation.y = -0.31; tug.add(tuRis);   // central risalit, Rechbauer front
-            const tuCap = facet(new THREE.BoxGeometry(19, 1.8, 10), 0x777d82, 0.6, 0.45);
-            tuCap.position.set(-9, 21.9, -42); tuCap.rotation.y = -0.31; tug.add(tuCap);
-            // crowned centre: shallow slate mansard + gilt finial over the risalit
-            const tuMans = facet(new THREE.ConeGeometry(7.5, 4.5, 4), 0x5a6066, 0.58, 0.5);
-            tuMans.rotation.y = Math.PI / 4 - 0.31; tuMans.position.set(-9, 25, -42); tug.add(tuMans);
-            const tuFin = facet(new THREE.SphereGeometry(0.5, 8, 6), 0xcaa233, 1, 0.1);
-            tuFin.position.set(-9, 27.6, -42); tug.add(tuFin);
-            // four corner pavilions with slate pyramid caps (historicist rhythm)
-            [[-38, -24], [-17.7, 41.3], [38, 23.7], [17.9, -41.1]].forEach(([E, N]) => {
-              const pav = facet(new THREE.BoxGeometry(11, 18, 11), TUCREAM, 0.72, 0.42);
-              pav.position.set(E, 9, -N); pav.rotation.y = -0.31; tug.add(pav);
-              const cap = facet(new THREE.ConeGeometry(8, 4, 4), 0x5a6066, 0.58, 0.5);
-              cap.rotation.y = Math.PI / 4 - 0.31; cap.position.set(E, 20, -N); tug.add(cap);
-            });
             const mcTu = maplibregl.MercatorCoordinate.fromLngLat([15.450314, 47.069085], 0);
             tug.position.set((mcTu.x - T.x) / T.scale, 0, (mcTu.y - T.y) / T.scale);
             scene.add(tug);
@@ -2649,7 +2671,8 @@
               { name: 'Stadthalle Graz', info: 'Multi-purpose hall of the Graz trade fair by Klaus Kada (2002) - a vast glass hall for fairs, concerts and sport, holding up to ~14,000 guests.',
                 lng: 15.44752,   lat: 47.057682,  polys: [{ p: MSH_POLY, h: 25.5 }] },
               { name: 'TU Graz — Alte Technik', info: 'Main building of Graz University of Technology on Rechbauerstrasse (opened 1888, historicist style) - the heart of the oldest TU campus.',
-                lng: 15.450314,  lat: 47.069085,  polys: [{ p: TU_OUT, h: 18 }] },
+                lng: 15.450314,  lat: 47.069085,  polys: [{ p: TU_OUT, h: 19 }, { p: TU_MANS, h: 26 },
+                  ...TU_DOMES.map(d => ({ p: d, h: 25 }))] },
               { name: 'TU Graz — Neue Technik', info: "Second main building of Graz University of Technology on Stremayrgasse (opened 1912) - home of the chemistry institutes. Together with the Alte Technik it frames the historic TU campus.",
                 lng: 15.4508763, lat: 47.0649005, polys: [
                   { p: NT_POLY, h: 19, n: 'Main Building (1912)', i: "The historicist second main building of the TU - opened 1912, crowned risalit toward Kopernikusgasse." },
