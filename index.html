@@ -1005,9 +1005,11 @@
     // which 'b3d-restore' draws back with b3d's exact paint. Re-run the tool
     // after adding or moving a landmark (it reads LMK_OCC below).
     let CARTO_HIDE = null;                                                   // { ids, restore } once loaded
-    fetch('./carto_hide.json').then(r => r.ok ? r.json() : null).then(d => {
-      if (d && Array.isArray(d.ids)) { CARTO_HIDE = d; refresh3D(); }
-    }).catch(() => {});
+    fetch('./carto_hide.json').then(r => r.ok ? r.json() : null).catch(() => null).then(d => {
+      // missing/broken: still show the city in 3D (CARTO's landmark copies included)
+      CARTO_HIDE = d && Array.isArray(d.ids) ? d : { ids: [], restore: { type: 'FeatureCollection', features: [] } };
+      refresh3D();
+    });
     const HIDE_TOWER = ['all',
       ['!=', ['get', 'hide_3d'], true],
       ['!=', ['get', 'colour'], '#dca96b'],                                  // Uhrturm tan shaft
