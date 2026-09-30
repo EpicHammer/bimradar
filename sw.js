@@ -1,9 +1,9 @@
 /* BimRadar service worker — caches the app shell for instant, installable loads.
    Live data (HAFAS POSTs, basemap tiles, Photon) is never cached: it must stay fresh.
    Bump CACHE when index.html or the pinned MapLibre version changes. */
-const CACHE = 'bimradar-v46';
+const CACHE = 'bimradar-v47';
 const SHELL = [
-  './', './index.html', './lines.json', './manifest.json',
+  './', './index.html', './lines.json', './carto_hide.json', './manifest.json',
   './icon-192.png?v=2', './icon-512.png?v=2', './icon-180.png?v=2', './icon-32.png?v=2',
   './maplibre-gl.js?v=4.7.1', './maplibre-gl.css?v=4.7.1'
 ];

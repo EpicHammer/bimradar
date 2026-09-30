@@ -37,6 +37,15 @@ for (const [label, code] of [['index.html inline script', script], ['sw.js', fs.
   try { new vm.Script(code); ok(true, label + ' parses'); } catch (e) { ok(false, label + ' parses: ' + e.message); }
 }
 
+// ---- 0b. the generated CARTO hide list (tools/carto_hide.js) ----
+{
+  let d = null; try { d = JSON.parse(fs.readFileSync(path.join(root, 'carto_hide.json'), 'utf8')); } catch (e) {}
+  ok(d && Array.isArray(d.ids) && d.ids.length > 50 && d.ids.every(Number.isInteger), 'carto_hide.json: id list');
+  ok(d && d.restore && d.restore.type === 'FeatureCollection' && d.restore.features.every(f =>
+    f.geometry.type === 'Polygon' && f.geometry.coordinates[0].length >= 4 && typeof f.properties.render_height === 'number'),
+    'carto_hide.json: restore polygons carry heights');
+}
+
 // ---- 1. HAFAS time helpers ----
 const T = box(script, ['hafasTime', 'hafasMins', 'delayOf', 'hafasSec', 'relSec2']);
 ok(T.hafasTime('153000') === '15:30', 'hafasTime HHMMSS');

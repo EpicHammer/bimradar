@@ -20,7 +20,7 @@ const LIVE = '/var/apps/eliashammer/bimradar';
 const BACKUPS = '/var/apps/_deploy-backups/bimradar';
 const LOCK = '/tmp/bimradar-deploy.lock';
 const APP_FILES = [
-  'index.html', 'sw.js', 'manifest.json', 'lines.json',
+  'index.html', 'sw.js', 'manifest.json', 'lines.json', 'carto_hide.json',
   'maplibre-gl.js', 'maplibre-gl.css', 'three.module.js',
   'icon-32.png', 'icon-180.png', 'icon-192.png', 'icon-512.png',
   'icon-192-maskable.png', 'icon-512-maskable.png',
