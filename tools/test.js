@@ -110,5 +110,40 @@ ok(P.pathBetween([47.07, 15.449], [47.07, 15.431], line).length === 0, 'pathBetw
   }
 }
 
-console.log((failed ? 'FAILED ' : 'ok ') + passed + ' passed, ' + failed + ' failed');
-process.exit(failed ? 1 : 0);
+// ---- 7. departure reminders: check() against a stubbed disk, HAFAS and push service ----
+async function pushTests() {
+  const src = fs.readFileSync(path.join(root, 'tools/push_server.js'), 'utf8').replace(/\r\n/g, '\n');
+  const ctx = vm.createContext({ Math, Date, String, Number, JSON, console });
+  vm.runInContext(
+    'let watches = [], __now = 0, __files = {}, __hafas = null, __calls = [], __pushes = [];\n' +
+    'const viennaSecNow = () => __now, API_DIR = "/api", MSG_DIR = "/api/pushmsg", epHash = s => s, log = () => {}, save = () => {};\n' +
+    'const path = { join: (...a) => a.join("/") };\n' +
+    'const fs = { readFileSync: f => { if (!(f in __files)) throw new Error("ENOENT " + f); return __files[f]; }, writeFileSync: () => {} };\n' +
+    'const gate = async (meth, req) => { __calls.push(req); return __hafas(req); };\n' +
+    'const sendPush = async ep => { __pushes.push(ep); return 201; };\n' +
+    ['secsUntil', 'hhmm', 'board', 'check'].map(n => lift(src, n)).join('\n') +
+    '\nthis.run = async (w, files, hafas, now) => { watches = w; __files = files; __hafas = hafas; __now = now; __calls = []; __pushes = [];' +
+    ' await check(); return { left: watches.length, calls: __calls, pushes: __pushes }; };', ctx);
+  const H = 12 * 3600, now = Date.now();
+  const dep = (jid, t) => ({ jid, stbStop: { dTimeS: t } });
+  const watch = (lid, jid, lead, ageS) => ({ sub: { endpoint: 'https://fcm.googleapis.com/fcm/send/x' },
+    lid, jid, line: '4', dir: '', stop: 'Graz Jakominiplatz', lead, lang: 'en', at: now - ageS * 1000 });
+  const hub = 'A=1@O=Graz Jakominiplatz@L=460304700@';
+  // the poller caches only the next 12 departures: at a hub that is ~5 minutes
+  const cached = { '/api/board/460304700.json': JSON.stringify({ t: now,
+    res: { jnyL: Array.from({ length: 12 }, (_, k) => dep('near' + k, '1205' + String(k).padStart(2, '0'))) } }) };
+  const full = () => ({ jnyL: [dep('near0', '120500'), dep('far', '121200')] });
+
+  let r = await ctx.run([watch('A=1@L=999999999@', 'x', 3, 7 * 3600)], {}, () => { throw new Error('HAFAS LOCATION'); }, H);
+  ok(r.left === 0, 'push: a 7 h old watch expires even when its board cannot be fetched');
+  r = await ctx.run([watch(hub, 'far', 13, 60)], cached, full, H);
+  ok(r.pushes.length === 1 && r.calls.length === 1 && r.calls[0].maxJny === 40,
+    'push: a journey beyond the cached board is looked up on the full HAFAS board');
+  r = await ctx.run([watch(hub, 'near3', 13, 60)], cached, full, H);
+  ok(r.pushes.length === 1 && r.calls.length === 0, 'push: a journey on the fresh cached board does not hit HAFAS');
+}
+
+pushTests().catch(e => ok(false, 'push tests threw: ' + e.message)).then(() => {
+  console.log((failed ? 'FAILED ' : 'ok ') + passed + ' passed, ' + failed + ' failed');
+  process.exit(failed ? 1 : 0);
+});
