@@ -767,8 +767,13 @@
     const HAFAS_URL = 'https://verkehrsauskunft.verbundlinie.at/hamm/gate';
     const HAFAS_AID = 'wf7mcf9bv3nv8g5f';
     function hafas(meth, req) {
+      // No Content-Type header on purpose: the string body goes out as
+      // text/plain, a CORS "simple" request, so the browser skips the OPTIONS
+      // preflight. The gate reads the JSON either way, and it sends no
+      // Access-Control-Max-Age, so a preflight would only be cached for 5 s:
+      // a full extra round trip on nearly every call.
       return fetch(HAFAS_URL, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
         body: JSON.stringify({
           ver: '1.59', lang: 'deu', ext: 'VAO.22',
           auth: { type: 'AID', aid: HAFAS_AID },
