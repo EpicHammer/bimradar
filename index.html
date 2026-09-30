@@ -3308,29 +3308,34 @@
         jnyL: (ox.res.jnyL || []).filter(j => inView(j) && !(px && inProxyRect(j))) } });
       if (parts.length) ingest(parts);
     }
-    // requeue: the view changed, so a poll already in flight (asked for the
-    // old view) is followed by one more instead of this one being dropped
-    async function poll(requeue) {
+    // view: the view changed. A poll already in flight (asked for the old
+    // view) is then followed by one more instead of this one being dropped,
+    // and a fresh held proxy file is reused: only the area past Graz is
+    // fetched, while the 7 s timer keeps the file itself current. (Refetching
+    // it here competed with the HAFAS call and the new map tiles for a
+    // phone's bandwidth.)
+    async function poll(view) {
       if (!map) return;
-      if (inFlight) { if (requeue === true) pollAgain = true; return; }
+      if (inFlight) { if (view === true) pollAgain = true; return; }
       inFlight = true;
       try {
         const b = map.getBounds();
         if (!b) return;
         const sw = b.getSouthWest(), ne = b.getNorthEast();
         const beyond = !proxyHolds(sw, ne);
+        const held = view === true ? freshFeed(feed.proxy) : null;
         // Past Graz, HAFAS is asked for the view alongside the proxy file, so
         // the slower of the two sets the pace, not their sum. A failed HAFAS
         // call there still leaves the Graz vehicles updating.
         const [px, hx] = await Promise.all([
-          loadProxy().catch(() => null),
+          held || loadProxy().catch(() => null),
           beyond ? hafasRect(sw, ne).catch(e => e) : null
         ]);
         let outer = hx;
         if (!px && !beyond) outer = await hafasRect(sw, ne);   // poller down: HAFAS alone
         if (outer instanceof Error) { if (!px) throw outer; outer = null; }
         feed.proxy = px;
-        if (px) noteHim(px.res.common);
+        if (px && px !== held) noteHim(px.res.common);
         if (outer) {
           noteHim(outer.common);
           feed.outer = { res: outer, t: Date.now(), stamp: 'h' + (++hafasSeq) };
@@ -3343,7 +3348,7 @@
       } finally {
         inFlight = false;
         updateLive();
-        if (pollAgain) { pollAgain = false; poll(); }
+        if (pollAgain) { pollAgain = false; poll(true); }
       }
     }
 
