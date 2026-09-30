@@ -75,11 +75,13 @@ async function gate(meth, req) {
   if (!L.length || (L[0].err != null && L[0].err !== 'OK')) throw new Error('HAFAS ' + (L.length ? L[0].err : 'empty'));
   return L[0].res || {};
 }
-async function board(lid) {
+async function board(lid, jids) {
   const m = /L=(\d+)/.exec(lid);
   if (m) try {                                   // the feed poller's cached board, if fresh
     const d = JSON.parse(fs.readFileSync(path.join(API_DIR, 'board', m[1] + '.json'), 'utf8'));
-    if (Date.now() - d.t < 60000) return d.res;
+    // it holds only the next 12 departures (~5 min at a hub): a watched journey
+    // not on it yet needs the full board, or its reminder fires late or never
+    if (Date.now() - d.t < 60000 && jids.every(jid => (d.res.jnyL || []).some(x => x.jid === jid))) return d.res;
   } catch (e) {}
   return gate('StationBoard', { type: 'DEP', stbLoc: { lid }, maxJny: 40 });
 }
@@ -102,14 +104,18 @@ async function check() {
   const byLid = new Map();
   for (const w of watches) { if (!byLid.has(w.lid)) byLid.set(w.lid, []); byLid.get(w.lid).push(w); }
   const done = new Set();
-  for (const [lid, list] of byLid) {
+  for (const [lid, all] of byLid) {
+    // expire before fetching: a stop whose board HAFAS rejects would otherwise
+    // keep its watches (and a HAFAS request every CHECK_S) forever
+    const list = [];
+    for (const w of all) { if (Date.now() - w.at > 6 * 3600e3) done.add(w); else list.push(w); }
+    if (!list.length) continue;
     let res = null;
-    try { res = await board(lid); } catch (e) { continue; }
+    try { res = await board(lid, list.map(w => w.jid)); } catch (e) { continue; }
     for (const w of list) {
       const j = (res.jnyL || []).find(x => x.jid === w.jid);
       const st = j && j.stbStop;
       const t = st && (st.dTimeR || st.dTimeS);
-      if (Date.now() - w.at > 6 * 3600e3) { done.add(w); continue; }
       if (!t) { if (Date.now() - w.at > 45 * 60e3 && !w.seen) done.add(w); continue; }
       w.seen = true;
       const left = secsUntil(t);
