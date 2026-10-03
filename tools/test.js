@@ -58,6 +58,20 @@ ok(T.delayOf({ dTimeS: '120000' }) === null, 'delay without RT');
 ok(T.hafasSec('010000') === 3600, 'hafasSec');
 ok(T.relSec2('000020', 23 * 3600 + 59 * 60 + 40) === 40, 'relSec2 wraps midnight forward');
 ok(T.relSec2('120000', 12 * 3600 + 30) === -30, 'relSec2 past');
+ok(T.relSec2('235900', 60) === -120, 'relSec2 wraps midnight backward (a stop passed at 23:59, seen at 00:01)');
+ok(T.relSec2('200000', 7 * 3600) === 13 * 3600, 'relSec2 keeps a departure 13 h ahead ahead');
+{
+  // place suggestions: one row per place, the stop wins; same-name shops elsewhere stay
+  const S = box(script, ['kmFromGraz', 'metresBetween', 'sameName', 'mergeSugg'], 'const GRAZ = { lat: 47.0707, lng: 15.4395 }, SEARCH_RADIUS_KM = 40;');
+  const st = { name: 'Graz Jakominiplatz', sub: '', isStop: true, lid: 'S', lat: 47.0665, lon: 15.4425 };
+  const ad = { name: 'Jakominiplatz, 8010 Graz', sub: '', isStop: false, lid: 'A', lat: 47.0668, lon: 15.4430 };
+  const sq = { name: 'Jakominiplatz', sub: 'Graz', isStop: false, lat: 47.0670, lon: 15.4433 };
+  const b1 = { name: 'Billa', sub: 'Annenstraße 5, Graz', isStop: false, lat: 47.0700, lon: 15.4300 };
+  const b2 = { name: 'Billa', sub: 'Annenstraße 30, Graz', isStop: false, lat: 47.0705, lon: 15.4290 };
+  const out = S.mergeSugg([ad, st], [sq, sq, b1, b2]);
+  ok(out.filter(x => /jakomini/i.test(x.name)).length === 1 && out[0].isStop, 'suggestions: one Jakominiplatz row, the stop');
+  ok(out.filter(x => x.name === 'Billa').length === 2, 'suggestions: same-name shops at different addresses stay');
+}
 
 // ---- 2. the timetable motion model ----
 {
