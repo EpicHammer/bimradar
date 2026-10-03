@@ -66,7 +66,7 @@
     #mapstage, .tbtn, .grabber, header {
       -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
     html { -webkit-text-size-adjust: 100%; }
-    html, body { max-width: 100%; overflow-x: hidden; }
+    html, body { max-width: 100%; overflow-x: hidden; overscroll-behavior: none; }   /* no page rubber-band behind the sheet */
     body { margin: 0; color: var(--fg); background: var(--bg); overflow: hidden;
       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
     /* own stacking context: marker depth z-indexes (thousands) stay inside the
@@ -5390,9 +5390,13 @@
       sheet.addEventListener('touchstart', e => {
         tMode = 'scroll';
         if (!isMobile() || dragging || e.touches.length !== 1) return;
-        // the handles keep their own pointer drag; fields and the sideways
-        // favourites shelf keep their native behaviour
-        if (e.target.closest('#grabber, main > header, #cardback, input, textarea, select, .favscroll')) return;
+        // the handles keep their own pointer drag, the sideways favourites shelf
+        // scrolls natively. Fields drag the sheet too (a swipe that starts on
+        // "From"/"Where to?" otherwise rubber-bands the whole page): a plain tap
+        // still focuses them, only a field already being edited keeps its touches
+        if (e.target.closest('#grabber, main > header, #cardback, .favscroll')) return;
+        const fld = e.target.closest('input, textarea, select');
+        if (fld && fld === document.activeElement) return;
         tsX = e.touches[0].clientX; tsY = e.touches[0].clientY; tMode = 'undecided';
       }, { passive: true });
       sheet.addEventListener('touchmove', e => {
@@ -5418,8 +5422,11 @@
         curOff = Math.max(0, Math.min(offsets().peek, startOff + (t.clientY - startY)));
         sheet.style.transform = 'translateY(' + curOff + 'px)';
       }, { passive: false });
-      const touchEnd = () => {
+      const touchEnd = e => {
         if (tMode === 'sheet' && dragging) {
+          // no click/focus for whatever the drag started on (e.g. a field ->
+          // the keyboard would pop up right after swiping the sheet down)
+          if (e.cancelable) e.preventDefault();
           dragging = false;
           document.body.classList.remove('sheet-dragging');
           sheet.style.transition = ''; sheet.style.transform = '';
