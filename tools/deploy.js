@@ -19,15 +19,15 @@ const REPO = '/var/apps/_repo/bimradar';
 const LIVE = '/var/apps/eliashammer/bimradar';
 const BACKUPS = '/var/apps/_deploy-backups/bimradar';
 const LOCK = '/tmp/bimradar-deploy.lock';
-const APP_FILES = [
-  'index.html', 'sw.js', 'manifest.json', 'lines.json', 'carto_hide.json',
-  'maplibre-gl.js', 'maplibre-gl.css', 'three.module.js',
-  'icon-32.png', 'icon-180.png', 'icon-192.png', 'icon-512.png',
-  'icon-192-maskable.png', 'icon-512-maskable.png',
-  'splash-1290x2796.png', 'splash-1179x2556.png', 'splash-1170x2532.png',
-  'splash-1284x2778.png', 'splash-1125x2436.png', 'splash-1242x2688.png',
-  'splash-828x1792.png', 'splash-750x1334.png'
-];
+// What goes live is listed in tools/app_files.json and read AFTER the pull, so
+// a commit that adds or moves app files ships in that same deploy (this
+// script itself is the pre-pull copy). Entries ending in '/' are folders.
+const appFiles = () => JSON.parse(fs.readFileSync(path.join(REPO, 'tools/app_files.json'), 'utf8'));
+const copyEntry = (from, to, f) => {
+  const src = path.join(from, f), dst = path.join(to, f);
+  if (f.endsWith('/')) fs.cpSync(src, dst, { recursive: true });
+  else { fs.mkdirSync(path.dirname(dst), { recursive: true }); fs.copyFileSync(src, dst); }
+};
 
 const log = m => console.log(new Date().toISOString(), m);
 const git = (...args) => execFileSync('git', ['-C', REPO, ...args], { encoding: 'utf8' }).trim();
@@ -50,18 +50,20 @@ async function main() {
       log('TESTS FAILED — not deploying ' + sha + ' :: ' + ((e.stdout || '') + (e.stderr || '')).trim());
       process.exit(4);
     }
+    // every listed file must exist BEFORE anything is touched: a half-copied
+    // app (new index.html, missing libraries) is worse than the old version
+    const APP_FILES = appFiles();
+    const missing = APP_FILES.filter(f => !fs.existsSync(path.join(REPO, f)));
+    if (missing.length) { log('MISSING in repo, not deploying ' + sha + ': ' + missing.join(', ')); process.exit(5); }
     log('deploying ' + sha);
 
     // backup current live app files (outside the web root — not publicly served)
     const bdir = path.join(BACKUPS, new Date().toISOString().replace(/[:.]/g, '-') + '-' + sha);
     fs.mkdirSync(bdir, { recursive: true });
-    for (const f of APP_FILES) {
-      const src = path.join(LIVE, f);
-      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(bdir, f));
-    }
+    for (const f of APP_FILES) if (fs.existsSync(path.join(LIVE, f))) copyEntry(LIVE, bdir, f);
 
     // copy the app over, then stamp the SW cache name with the commit sha
-    for (const f of APP_FILES) fs.copyFileSync(path.join(REPO, f), path.join(LIVE, f));
+    for (const f of APP_FILES) copyEntry(REPO, LIVE, f);
     const swPath = path.join(LIVE, 'sw.js');
     const sw = fs.readFileSync(swPath, 'utf8')
       .replace(/const CACHE = '[^']+'/, "const CACHE = 'bimradar-" + sha + "'");
