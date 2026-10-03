@@ -107,6 +107,21 @@ ok(sl.length === 3 && near(sl[0][1], 15.435, 1e-4) && near(sl[2][1], 15.445, 1e-
 ok(P.pathBetween([47.07, 15.431], [47.07, 15.449], line).length === 1, 'pathBetween ships the middle vertex');
 ok(P.pathBetween([47.07, 15.449], [47.07, 15.431], line).length === 0, 'pathBetween refuses to go backwards');
 
+// ---- 5b. the proxy feed is trimmed to exactly what the client reads ----
+{
+  const S = box(poller, ['slimFeed']);
+  const thin = S.slimFeed({
+    common: { locL: [{ name: 'Graz Jakominiplatz', crd: {}, lid: 'x' }], icoL: [{}], opL: [{}], himL: [{ hid: 'h', head: 'Umleitung' }],
+      prodL: [{ name: 'Tram 4', nameS: '4', cls: 16, icoX: 0, prodCtx: { line: '4', catOutL: 'Straßenbahn', catOutS: 's00', lineId: 'x' } }] },
+    jnyL: [{ jid: 'a', prodX: 0, pos: { x: 1, y: 2 }, dirGeo: 3, dirTxt: 'Puntigam', date: '20261003', proc: 1, seg: [[1, 2], [3, 4]], st: [], sp: 0,
+      stopL: [{ locX: 0, dTimeS: '120000', dTimeR: '120100', dInS: true }] }] });
+  ok(K.kindOf(thin.common.prodL[0]) === 'tram' && K.lineName(thin.common.prodL[0]) === '4' &&
+     thin.common.locL[0].name === 'Graz Jakominiplatz' && thin.common.himL.length === 1 &&
+     T.delayOf(thin.jnyL[0].stopL[0]) === 1 && thin.jnyL[0].dirGeo === 3 && thin.jnyL[0].seg.length === 2 &&
+     !thin.common.icoL && !thin.jnyL[0].date && !('dInS' in thin.jnyL[0].stopL[0]),
+     'slimFeed keeps exactly what the client reads');
+}
+
 // ---- 6. i18n: every i18('...') key that should be German has an entry ----
 {
   const m = script.match(/const DE = (\{[\s\S]*?\n {4}\});/);
@@ -150,6 +165,10 @@ async function pushTests() {
     'push: a journey beyond the cached board is looked up on the full HAFAS board');
   r = await ctx.run([watch(hub, 'near3', 13, 60)], cached, full, H);
   ok(r.pushes.length === 1 && r.calls.length === 0, 'push: a journey on the fresh cached board does not hit HAFAS');
+  r = await ctx.run([watch('A=1@L=999999999@', 'x', 3, 60)], {}, () => { throw new Error('HAFAS LOCATION'); }, H);
+  ok(r.left === 0, 'push: a stop HAFAS does not know is dropped at once');
+  r = await ctx.run([watch(hub, 'x', 3, 60)], {}, () => { throw new Error('fetch failed'); }, H);
+  ok(r.left === 1, 'push: a network error keeps the watch');
 }
 
 // ---- 8. vehicle feed: redraw from held reports, proxy + HAFAS merge ----

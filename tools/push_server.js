@@ -29,7 +29,7 @@ const MSG_DIR = path.join(API_DIR, 'pushmsg');
 const HAFAS_URL = 'https://verkehrsauskunft.verbundlinie.at/hamm/gate';
 const PUSH_HOSTS = [/(^|\.)googleapis\.com$/, /(^|\.)push\.apple\.com$/, /(^|\.)mozilla\.com$/,
                     /(^|\.)notify\.windows\.com$/, /(^|\.)push\.services\.mozilla\.com$/];
-const MAX_WATCHES = 500, MAX_PER_SUB = 5, CHECK_S = 20;
+const MAX_WATCHES = 500, MAX_PER_SUB = 5, CHECK_S = 20, MAX_STOPS = 60, NEW_PER_MIN = 20;
 
 const log = m => console.log(new Date().toISOString(), m);
 const b64u = buf => Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -111,7 +111,12 @@ async function check() {
     for (const w of all) { if (Date.now() - w.at > 6 * 3600e3) done.add(w); else list.push(w); }
     if (!list.length) continue;
     let res = null;
-    try { res = await board(lid, list.map(w => w.jid)); } catch (e) { continue; }
+    try { res = await board(lid, list.map(w => w.jid)); }
+    catch (e) {
+      // HAFAS doesn't know this stop at all: drop its watches now, not after 6 h
+      if (/^HAFAS LOCATION/.test(e.message)) for (const w of list) done.add(w);
+      continue;
+    }
     for (const w of list) {
       const j = (res.jnyL || []).find(x => x.jid === w.jid);
       const st = j && j.stbStop;
@@ -139,7 +144,28 @@ async function check() {
   }
   if (done.size) { watches = watches.filter(w => !done.has(w)); save(); }
 }
-setInterval(() => check().catch(e => log('check failed: ' + e.message)), CHECK_S * 1000);
+// A slow check (HAFAS or a push service timing out) must not overlap the next
+// one: both would hold the same due watch and push it twice.
+let checking = false;
+setInterval(async () => {
+  if (checking) return;
+  checking = true;
+  try { await check(); } catch (e) { log('check failed: ' + e.message); } finally { checking = false; }
+}, CHECK_S * 1000);
+
+// No accounts, and the endpoint is client-chosen, so no per-user limit can be
+// trusted. A global budget for NEW watches plus a cap on distinct stops bounds
+// how much HAFAS traffic anyone can make this service generate.
+let tokens = NEW_PER_MIN, tokensAt = Date.now();
+function takeToken() {
+  const now = Date.now();
+  tokens = Math.min(NEW_PER_MIN, tokens + (now - tokensAt) * NEW_PER_MIN / 60000);
+  tokensAt = now;
+  if (tokens < 1) return false;
+  tokens--;
+  return true;
+}
+const stopOf = lid => (/(^|@)L=(\d{1,12})@/.exec(lid) || [])[2];
 
 // ---- HTTP ----
 const send = (res, code, body, type) => { res.writeHead(code, { 'Content-Type': type || 'text/plain', 'Cache-Control': 'no-store' }); res.end(body); };
@@ -153,11 +179,15 @@ http.createServer((req, res) => {
     const sub = b && b.sub, w = b && b.watch;
     let host = ''; try { const u = new URL(sub.endpoint); if (u.protocol === 'https:') host = u.hostname; } catch (e) {}
     if (!host || !PUSH_HOSTS.some(re => re.test(host))) return send(res, 400, 'unsupported push service');
-    if (!w || typeof w.lid !== 'string' || typeof w.jid !== 'string' || w.lid.length > 300 || w.jid.length > 200)
+    if (!w || typeof w.lid !== 'string' || typeof w.jid !== 'string' || w.lid.length > 300 || w.jid.length > 200 ||
+        !stopOf(w.lid))
       return send(res, 400, 'bad watch');
     const mine = watches.filter(x => x.sub.endpoint === sub.endpoint);
     if (mine.some(x => x.jid === w.jid && x.lid === w.lid)) return send(res, 200, 'already watching');
     if (mine.length >= MAX_PER_SUB || watches.length >= MAX_WATCHES) return send(res, 429, 'too many reminders');
+    if (!watches.some(x => stopOf(x.lid) === stopOf(w.lid)) && new Set(watches.map(x => stopOf(x.lid))).size >= MAX_STOPS)
+      return send(res, 429, 'too many reminders');
+    if (!takeToken()) return send(res, 429, 'busy, try again in a minute');
     watches.push({ sub: { endpoint: sub.endpoint }, lid: w.lid, jid: w.jid,
       line: String(w.line || '').slice(0, 12), dir: String(w.dir || '').slice(0, 60), stop: String(w.stop || '').slice(0, 60),
       lead: Math.max(1, Math.min(30, +w.lead || 3)), lang: b.lang === 'de' ? 'de' : 'en', at: Date.now() });
