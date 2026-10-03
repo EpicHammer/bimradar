@@ -13,17 +13,17 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="BimRadar">
-  <link rel="apple-touch-icon" href="./icon-180.png?v=3">
-  <link rel="apple-touch-startup-image" href="./splash-1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-  <link rel="apple-touch-startup-image" href="./splash-1179x2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-  <link rel="apple-touch-startup-image" href="./splash-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-  <link rel="apple-touch-startup-image" href="./splash-1284x2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-  <link rel="apple-touch-startup-image" href="./splash-1125x2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-  <link rel="apple-touch-startup-image" href="./splash-1242x2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-  <link rel="apple-touch-startup-image" href="./splash-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
-  <link rel="apple-touch-startup-image" href="./splash-750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
-  <link rel="icon" href="./icon-32.png?v=3" sizes="32x32">
-  <link rel="shortcut icon" href="./icon-32.png?v=3">
+  <link rel="apple-touch-icon" href="./icons/icon-180.png?v=3">
+  <link rel="apple-touch-startup-image" href="./icons/splash-1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+  <link rel="apple-touch-startup-image" href="./icons/splash-1179x2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+  <link rel="apple-touch-startup-image" href="./icons/splash-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+  <link rel="apple-touch-startup-image" href="./icons/splash-1284x2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+  <link rel="apple-touch-startup-image" href="./icons/splash-1125x2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+  <link rel="apple-touch-startup-image" href="./icons/splash-1242x2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+  <link rel="apple-touch-startup-image" href="./icons/splash-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+  <link rel="apple-touch-startup-image" href="./icons/splash-750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+  <link rel="icon" href="./icons/icon-32.png?v=3" sizes="32x32">
+  <link rel="shortcut icon" href="./icons/icon-32.png?v=3">
 
   <!-- warm up the third-party origins while the HTML is still parsing -->
   <link rel="preconnect" href="https://basemaps.cartocdn.com" crossorigin>
@@ -32,8 +32,8 @@
 
   <!-- self-hosted MapLibre: same origin as the page, gzipped by our nginx, no
        unpkg handshake. defer lets the UI paint before the 210 KB script lands. -->
-  <link rel="stylesheet" href="./maplibre-gl.css?v=4.7.1">
-  <script defer src="./maplibre-gl.js?v=4.7.1"></script>
+  <link rel="stylesheet" href="./vendor/maplibre-gl.css?v=4.7.1">
+  <script defer src="./vendor/maplibre-gl.js?v=4.7.1"></script>
   <style>
     :root {
       --sab: env(safe-area-inset-bottom, 0px);
@@ -872,7 +872,7 @@
     let map = null, info = null;
     // canonical line names (termini) from the official Verbund Steiermark GTFS feed
     let LINES = {};
-    fetch('./lines.json').then(r => r.ok ? r.json() : {}).then(d => { LINES = d; }).catch(() => {});
+    fetch('./data/lines.json').then(r => r.ok ? r.json() : {}).then(d => { LINES = d; }).catch(() => {});
     // "mobile" = narrow, OR a touch device in landscape — a rotated phone must
     // keep the sheet UI instead of falling back to the desktop sidebar
     const MOBILE_MQ = window.matchMedia('(max-width: 44rem), (pointer: coarse) and (max-width: 62rem) and (max-height: 30rem)');
@@ -1030,7 +1030,7 @@
     // which 'b3d-restore' draws back with b3d's exact paint. Re-run the tool
     // after adding or moving a landmark (it reads LMK_OCC below).
     let CARTO_HIDE = null;                                                   // { ids, restore } once loaded
-    fetch('./carto_hide.json').then(r => r.ok ? r.json() : null).catch(() => null).then(d => {
+    fetch('./data/carto_hide.json').then(r => r.ok ? r.json() : null).catch(() => null).then(d => {
       // missing/broken: still show the city in 3D (CARTO's landmark copies included)
       CARTO_HIDE = d && Array.isArray(d.ids) ? d : { ids: [], restore: { type: 'FeatureCollection', features: [] } };
       refresh3D();
@@ -1104,7 +1104,7 @@
       if (threeLayerFactory || threeLoading) return;
       threeLoading = true;
       let THREE;
-      try { THREE = await import('./three.module.js?v=0.170.0-min'); }
+      try { THREE = await import('./vendor/three.module.js?v=0.170.0-min'); }
       catch (e) { threeLoading = false; return; }   // stays on the blocky tower
       // Let three keep its default managed round-trip (decode sRGB->linear on
       // input, re-encode linear->sRGB on output, in-shader). Net identity, so

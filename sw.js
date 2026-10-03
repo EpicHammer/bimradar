@@ -3,9 +3,9 @@
    Bump CACHE when index.html or the pinned MapLibre version changes. */
 const CACHE = 'bimradar-v47';
 const SHELL = [
-  './', './index.html', './lines.json', './carto_hide.json', './manifest.json',
-  './icon-192.png?v=3', './icon-512.png?v=3', './icon-180.png?v=3', './icon-32.png?v=3',
-  './maplibre-gl.js?v=4.7.1', './maplibre-gl.css?v=4.7.1'
+  './', './index.html', './data/lines.json', './data/carto_hide.json', './manifest.json',
+  './icons/icon-192.png?v=3', './icons/icon-512.png?v=3', './icons/icon-180.png?v=3', './icons/icon-32.png?v=3',
+  './vendor/maplibre-gl.js?v=4.7.1', './vendor/maplibre-gl.css?v=4.7.1'
 ];
 
 self.addEventListener('install', e => {
@@ -63,7 +63,7 @@ self.addEventListener('push', e => {
       if (r.ok) msg = await r.json();
     } catch (err) {}
     await self.registration.showNotification(msg.title, {
-      body: msg.body, icon: './icon-192.png?v=3', badge: './icon-192.png?v=3', tag: 'bimradar-dep' });
+      body: msg.body, icon: './icons/icon-192.png?v=3', badge: './icons/icon-192.png?v=3', tag: 'bimradar-dep' });
   })());
 });
 self.addEventListener('notificationclick', e => {

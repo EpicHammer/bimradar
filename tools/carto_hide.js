@@ -18,12 +18,12 @@ identical duplicate, not a hole in the city.
 
 INPUT  index.html: every landmark part polygon registered in LMK_OCC (local
        metres around each landmark's lng/lat), plus SEED ids below.
-OUTPUT carto_hide.json: { ids: [...], restore: GeoJSON FeatureCollection }.
+OUTPUT data/carto_hide.json: { ids: [...], restore: GeoJSON FeatureCollection }.
 Re-run after adding or moving a landmark. Zero dependencies (Node >= 18). */
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), zlib = require('node:zlib'), vm = require('node:vm');
 const ROOT = path.join(__dirname, '..');
-const OUT = path.join(ROOT, 'carto_hide.json');
+const OUT = path.join(ROOT, 'data', 'carto_hide.json');
 const TILES = 'https://tiles-a.basemaps.cartocdn.com/vectortiles/carto.streets/v1/{z}/{x}/{y}.mvt';
 const Z = 14;
 // the app's whole live-vehicle area (PROXY_RECT) plus a margin: hidden ids act everywhere

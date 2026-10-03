@@ -60,7 +60,7 @@ the first time 3D is switched on.
 
 Canonical line names come from the official GTFS feed
 (© [Mobilitätsverbünde Österreich](https://data.mobilitaetsverbuende.at),
-Datenlizenz MVO), pre-processed into the 3.6 KB `lines.json`. Line **colours** are
+Datenlizenz MVO), pre-processed into the 3.6 KB `data/lines.json`. Line **colours** are
 not in that feed — they were taken from the published network plan.
 
 The underlying data is produced by the operators who run the vehicles: Graz Linien
@@ -95,7 +95,7 @@ node tools/feed_poller.js     # writes api/vehicles.json every 5 s
 — point it at a directory your web server serves as `/api/`, or skip it entirely
 (the client falls back to direct HAFAS queries, just a little slower). The PWA
 icons and launch screens are rendered from one artwork with
-`node tools/make_icons.js tools/icon-art.webp .` (headless Chrome/Edge, no npm deps).
+`node tools/make_icons.js tools/icon-art.webp icons` (headless Chrome/Edge, no npm deps).
 
 ## Licence
 

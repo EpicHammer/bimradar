@@ -2,7 +2,7 @@
 /* BimRadar icons + iOS launch screens, all rendered from ONE square artwork
 (tools/icon-art.webp) by a headless Chromium (Edge or Chrome) - no npm deps.
 
-  node tools/make_icons.js tools/icon-art.webp .            # write every PNG
+  node tools/make_icons.js tools/icon-art.webp icons        # write every PNG
   node tools/make_icons.js tools/icon-art.webp out preview  # out/preview.png
 
 Set BROWSER=/path/to/chrome if it isn't found. After changing the icons, bump
