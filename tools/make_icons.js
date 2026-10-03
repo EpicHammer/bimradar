@@ -30,6 +30,16 @@ const img = (s, extra = '') => { const k = 1 / (1 - 2 * CROP), o = -s * CROP * k
   return `<div style="width:${s}px;height:${s}px;overflow:hidden;position:relative;${extra}"><img src="${uri}" style="position:absolute;left:${o}px;top:${o}px;width:${s * k}px;height:${s * k}px"></div>`; };
 // maskable: the art shrunk into the safe zone over a blurred, enlarged copy of itself (no visible frame)
 const masked = (s, shape = '') => `<div style="width:${s}px;height:${s}px;position:relative;overflow:hidden;${shape}"><div style="position:absolute;inset:-12%;filter:blur(${s * 0.04}px) saturate(1.1)">${img(s * 1.24)}</div><div style="position:absolute;left:${s * (1 - MASK_SCALE) / 2}px;top:${s * (1 - MASK_SCALE) / 2}px;box-shadow:0 0 ${s * 0.05}px rgba(0,0,0,.35);border-radius:${s * 0.06}px;overflow:hidden">${img(s * MASK_SCALE)}</div></div>`;
+// browser-tab icon: just the red Bim, cut out along this outline (traced on the
+// 1254 px icon-art.webp, clockwise from the left roof end; redo it for new art)
+const TRAM = [[118, 772], [142, 730], [192, 670], [218, 638], [224, 614], [300, 562], [420, 508], [520, 482], [600, 480], [638, 494], [650, 528],
+  [690, 542], [758, 568], [794, 606], [800, 640], [812, 840], [822, 1000], [824, 1080], [808, 1110], [746, 1116], [704, 1150], [676, 1170],
+  [600, 1172], [440, 1176], [392, 1172], [336, 1156], [250, 1138], [176, 1122], [120, 1098], [110, 1082], [112, 920], [115, 820]];
+const tramCut = S => {
+  const side = 757, x0 = 468 - side / 2, y0 = 825 - side / 2, k = S / side, W = 1254 * k;
+  const clip = TRAM.map(([x, y]) => (x * k).toFixed(2) + 'px ' + (y * k).toFixed(2) + 'px').join(',');
+  return `<div style="width:${S}px;height:${S}px;overflow:hidden;position:relative"><img src="${uri}" style="position:absolute;left:${-x0 * k}px;top:${-y0 * k}px;width:${W}px;height:${W}px;clip-path:polygon(${clip})"></div>`;
+};
 const SKY = '#1d3f73';                        // padding colour for the maskable variant (art's sky)
 const MASK_SCALE = 0.86;                      // art inside the maskable canvas (safe zone = central 80% circle)
 
@@ -41,7 +51,7 @@ if (mode === 'preview') {
   const col = (el, t) => `<div style="display:flex;flex-direction:column;align-items:center">${el}${lab(t)}</div>`;
   const row = bg => `<div style="display:flex;gap:26px;align-items:end;padding:22px;background:${bg}">` +
     col(tile(180, '22.5%'), 'iPhone') + col(mask(150), 'Android round') + col(maskSq(150), 'Android squircle') +
-    col(tile(60, '22.5%'), 'small') + col(tile(40, '22.5%'), 'tiny') + col(img(32), 'browser tab') + `</div>`;
+    col(tile(60, '22.5%'), 'small') + col(tile(40, '22.5%'), 'tiny') + col(tramCut(32), 'browser tab') + `</div>`;
   const splash = `<div style="width:180px;height:390px;background:#0d0f12;border-radius:22px;display:flex;align-items:center;justify-content:center;margin:22px">${img(62, 'border-radius:14px')}</div>`;
   shoot(`<div style="display:flex"><div>${row('linear-gradient(135deg,#f3e9dc,#cfe0f2)')}${row('linear-gradient(135deg,#1b1d2b,#2b3346)')}</div>${splash}</div>`, 1000, 470, path.join(outDir, 'preview.png'), '#222');
   console.log('preview.png'); process.exit(0);
@@ -49,7 +59,7 @@ if (mode === 'preview') {
 // app icons: 'any' icons carry rounded corners (Android shows them as-is); the
 // Apple touch icon is full-bleed (iOS rounds it itself); maskable is padded
 const R = '22.5%';
-shoot(img(32, 'border-radius:6px'), 32, 32, path.join(outDir, 'icon-32.png'));
+shoot(tramCut(32), 32, 32, path.join(outDir, 'icon-32.png'));
 shoot(img(180), 180, 180, path.join(outDir, 'icon-180.png'));
 for (const s of [192, 512]) {
   shoot(img(s, 'border-radius:' + R), s, s, path.join(outDir, `icon-${s}.png`));

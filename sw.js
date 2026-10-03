@@ -4,7 +4,7 @@
 const CACHE = 'bimradar-v47';
 const SHELL = [
   './', './index.html', './data/lines.json', './data/carto_hide.json', './manifest.json',
-  './icons/icon-192.png?v=3', './icons/icon-512.png?v=3', './icons/icon-180.png?v=3', './icons/icon-32.png?v=3',
+  './icons/icon-192.png?v=3', './icons/icon-512.png?v=3', './icons/icon-180.png?v=3', './icons/icon-32.png?v=4',
   './vendor/maplibre-gl.js?v=4.7.1', './vendor/maplibre-gl.css?v=4.7.1'
 ];
 
