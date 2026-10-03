@@ -4,7 +4,7 @@
 const CACHE = 'bimradar-v47';
 const SHELL = [
   './', './index.html', './lines.json', './carto_hide.json', './manifest.json',
-  './icon-192.png?v=2', './icon-512.png?v=2', './icon-180.png?v=2', './icon-32.png?v=2',
+  './icon-192.png?v=3', './icon-512.png?v=3', './icon-180.png?v=3', './icon-32.png?v=3',
   './maplibre-gl.js?v=4.7.1', './maplibre-gl.css?v=4.7.1'
 ];
 
@@ -63,7 +63,7 @@ self.addEventListener('push', e => {
       if (r.ok) msg = await r.json();
     } catch (err) {}
     await self.registration.showNotification(msg.title, {
-      body: msg.body, icon: './icon-192.png?v=2', badge: './icon-192.png?v=2', tag: 'bimradar-dep' });
+      body: msg.body, icon: './icon-192.png?v=3', badge: './icon-192.png?v=3', tag: 'bimradar-dep' });
   })());
 });
 self.addEventListener('notificationclick', e => {

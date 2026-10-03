@@ -94,8 +94,8 @@ node tools/feed_poller.js     # writes api/vehicles.json every 5 s
 
 — point it at a directory your web server serves as `/api/`, or skip it entirely
 (the client falls back to direct HAFAS queries, just a little slower). The PWA
-icons are reproducible with `node tools/gen_icons.js <outDir>` — also
-dependency-free (hand-rolled PNG encoder on top of `node:zlib`).
+icons and launch screens are rendered from one artwork with
+`node tools/make_icons.js tools/icon-art.webp .` (headless Chrome/Edge, no npm deps).
 
 ## Licence
 

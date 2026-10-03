@@ -18,7 +18,7 @@ to querying HAFAS directly when the `/api/vehicles.json` feed isn't there).
 - **The whole app is one file, `index.html`** (~4.5k lines, inline JS/CSS).
   Keep PRs small and focused — two large PRs against one file will conflict.
 - `tools/feed_poller.js` — the production feed proxy (zero npm deps).
-- `tools/gen_icons.js` — regenerates the PWA icons (zero npm deps).
+- `tools/make_icons.js` — renders every icon + iOS launch screen from `tools/icon-art.webp` (needs Chrome/Edge, zero npm deps).
 - Everything is JavaScript. Please keep it that way, and keep tools free of
   npm dependencies.
 
