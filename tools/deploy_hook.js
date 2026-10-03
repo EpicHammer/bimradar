@@ -47,23 +47,32 @@ http.createServer((req, res) => {
   let size = 0;
   req.on('data', c => { size += c.length; if (size > 1e6) req.destroy(); else chunks.push(c); });
   req.on('end', () => {
-    const body = Buffer.concat(chunks);
-    const sig = req.headers['x-hub-signature-256'] || '';
-    const want = 'sha256=' + crypto.createHmac('sha256', SECRET).update(body).digest('hex');
-    if (sig.length !== want.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want))) {
-      log('rejected: bad signature from ' + (req.headers['x-forwarded-for'] || req.socket.remoteAddress));
-      res.writeHead(401); res.end('bad signature'); return;
+    // nothing thrown in here may escape: an uncaught throw ends the process,
+    // and with it auto-deploy until someone restarts the hook by hand
+    try {
+      const body = Buffer.concat(chunks);
+      // compare BYTES: Node decodes header bytes as latin1, so a byte >= 0x80 is
+      // one char but two UTF-8 bytes, and timingSafeEqual throws on unequal lengths
+      const sig = Buffer.from(String(req.headers['x-hub-signature-256'] || ''));
+      const want = Buffer.from('sha256=' + crypto.createHmac('sha256', SECRET).update(body).digest('hex'));
+      if (sig.length !== want.length || !crypto.timingSafeEqual(sig, want)) {
+        log('rejected: bad signature from ' + (req.headers['x-forwarded-for'] || req.socket.remoteAddress));
+        res.writeHead(401); res.end('bad signature'); return;
+      }
+      const event = req.headers['x-github-event'];
+      let payload = {};
+      try { payload = JSON.parse(body.toString()); } catch (e) {}
+      if (event === 'ping') { log('ping from GitHub OK'); res.writeHead(200); res.end('pong'); return; }
+      if (event === 'push' && payload.ref === 'refs/heads/main') {
+        res.writeHead(202); res.end('deploying');
+        runDeploy('push ' + String(payload.after || '').slice(0, 7) + ' by ' + (payload.pusher && payload.pusher.name));
+        return;
+      }
+      log('ignored: ' + event + ' ' + (payload.ref || ''));
+      res.writeHead(200); res.end('ignored');
+    } catch (e) {
+      log('hook error: ' + ((e && e.stack) || e));
+      if (!res.headersSent) { res.writeHead(500); res.end(); }
     }
-    const event = req.headers['x-github-event'];
-    let payload = {};
-    try { payload = JSON.parse(body.toString()); } catch (e) {}
-    if (event === 'ping') { log('ping from GitHub OK'); res.writeHead(200); res.end('pong'); return; }
-    if (event === 'push' && payload.ref === 'refs/heads/main') {
-      res.writeHead(202); res.end('deploying');
-      runDeploy('push ' + String(payload.after || '').slice(0, 7) + ' by ' + (payload.pusher && payload.pusher.name));
-      return;
-    }
-    log('ignored: ' + event + ' ' + (payload.ref || ''));
-    res.writeHead(200); res.end('ignored');
   });
 }).listen(PORT, '127.0.0.1', () => log('hook listening on 127.0.0.1:' + PORT));
