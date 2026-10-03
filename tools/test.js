@@ -58,6 +58,20 @@ ok(T.delayOf({ dTimeS: '120000' }) === null, 'delay without RT');
 ok(T.hafasSec('010000') === 3600, 'hafasSec');
 ok(T.relSec2('000020', 23 * 3600 + 59 * 60 + 40) === 40, 'relSec2 wraps midnight forward');
 ok(T.relSec2('120000', 12 * 3600 + 30) === -30, 'relSec2 past');
+ok(T.relSec2('235900', 60) === -120, 'relSec2 wraps midnight backward (a stop passed at 23:59, seen at 00:01)');
+ok(T.relSec2('200000', 7 * 3600) === 13 * 3600, 'relSec2 keeps a departure 13 h ahead ahead');
+{
+  // place suggestions: one row per place, the stop wins; same-name shops elsewhere stay
+  const S = box(script, ['kmFromGraz', 'metresBetween', 'sameName', 'mergeSugg'], 'const GRAZ = { lat: 47.0707, lng: 15.4395 }, SEARCH_RADIUS_KM = 40;');
+  const st = { name: 'Graz Jakominiplatz', sub: '', isStop: true, lid: 'S', lat: 47.0665, lon: 15.4425 };
+  const ad = { name: 'Jakominiplatz, 8010 Graz', sub: '', isStop: false, lid: 'A', lat: 47.0668, lon: 15.4430 };
+  const sq = { name: 'Jakominiplatz', sub: 'Graz', isStop: false, lat: 47.0670, lon: 15.4433 };
+  const b1 = { name: 'Billa', sub: 'Annenstraße 5, Graz', isStop: false, lat: 47.0700, lon: 15.4300 };
+  const b2 = { name: 'Billa', sub: 'Annenstraße 30, Graz', isStop: false, lat: 47.0705, lon: 15.4290 };
+  const out = S.mergeSugg([ad, st], [sq, sq, b1, b2]);
+  ok(out.filter(x => /jakomini/i.test(x.name)).length === 1 && out[0].isStop, 'suggestions: one Jakominiplatz row, the stop');
+  ok(out.filter(x => x.name === 'Billa').length === 2, 'suggestions: same-name shops at different addresses stay');
+}
 
 // ---- 2. the timetable motion model ----
 {
@@ -107,6 +121,21 @@ ok(sl.length === 3 && near(sl[0][1], 15.435, 1e-4) && near(sl[2][1], 15.445, 1e-
 ok(P.pathBetween([47.07, 15.431], [47.07, 15.449], line).length === 1, 'pathBetween ships the middle vertex');
 ok(P.pathBetween([47.07, 15.449], [47.07, 15.431], line).length === 0, 'pathBetween refuses to go backwards');
 
+// ---- 5b. the proxy feed is trimmed to exactly what the client reads ----
+{
+  const S = box(poller, ['slimFeed']);
+  const thin = S.slimFeed({
+    common: { locL: [{ name: 'Graz Jakominiplatz', crd: {}, lid: 'x' }], icoL: [{}], opL: [{}], himL: [{ hid: 'h', head: 'Umleitung' }],
+      prodL: [{ name: 'Tram 4', nameS: '4', cls: 16, icoX: 0, prodCtx: { line: '4', catOutL: 'Straßenbahn', catOutS: 's00', lineId: 'x' } }] },
+    jnyL: [{ jid: 'a', prodX: 0, pos: { x: 1, y: 2 }, dirGeo: 3, dirTxt: 'Puntigam', date: '20261003', proc: 1, seg: [[1, 2], [3, 4]], st: [], sp: 0,
+      stopL: [{ locX: 0, dTimeS: '120000', dTimeR: '120100', dInS: true }] }] });
+  ok(K.kindOf(thin.common.prodL[0]) === 'tram' && K.lineName(thin.common.prodL[0]) === '4' &&
+     thin.common.locL[0].name === 'Graz Jakominiplatz' && thin.common.himL.length === 1 &&
+     T.delayOf(thin.jnyL[0].stopL[0]) === 1 && thin.jnyL[0].dirGeo === 3 && thin.jnyL[0].seg.length === 2 &&
+     !thin.common.icoL && !thin.jnyL[0].date && !('dInS' in thin.jnyL[0].stopL[0]),
+     'slimFeed keeps exactly what the client reads');
+}
+
 // ---- 6. i18n: every i18('...') key that should be German has an entry ----
 {
   const m = script.match(/const DE = (\{[\s\S]*?\n {4}\});/);
@@ -150,6 +179,10 @@ async function pushTests() {
     'push: a journey beyond the cached board is looked up on the full HAFAS board');
   r = await ctx.run([watch(hub, 'near3', 13, 60)], cached, full, H);
   ok(r.pushes.length === 1 && r.calls.length === 0, 'push: a journey on the fresh cached board does not hit HAFAS');
+  r = await ctx.run([watch('A=1@L=999999999@', 'x', 3, 60)], {}, () => { throw new Error('HAFAS LOCATION'); }, H);
+  ok(r.left === 0, 'push: a stop HAFAS does not know is dropped at once');
+  r = await ctx.run([watch(hub, 'x', 3, 60)], {}, () => { throw new Error('fetch failed'); }, H);
+  ok(r.left === 1, 'push: a network error keeps the watch');
 }
 
 // ---- 8. vehicle feed: redraw from held reports, proxy + HAFAS merge ----

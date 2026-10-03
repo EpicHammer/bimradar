@@ -385,6 +385,10 @@
       /* the fully-hidden mode stays available as an escape hatch */
       body.panel-hidden main { transform: translateY(110%); opacity: 0; pointer-events: none; }
       body.panel-half main { transform: translateY(52%); }
+      /* a card owns the sheet at a fixed height, so 'half' always shows the
+         ~37dvh the fab/pill offsets assume, not 48% of however tall the card is */
+      body.card-mode main { height: 78dvh; }
+      body.card-mode main > header { display: none; }
       /* On phones every control lives on the map (3D / locate / theme), so the
          sheet is nothing but title + search. */
       header .hright { display: none; }
@@ -401,6 +405,12 @@
       #to { padding-right: 3rem; }
       .sugg div { padding: .62rem .75rem; min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; }
       .cardback { min-height: 44px; touch-action: none; }   /* also a sheet drag handle */
+      /* map licence attribution (CARTO / OSM): bottom-right lay under the sheet
+         stub and beside the fabs — on phones it sits bottom-LEFT, just above
+         the stub (and above the half sheet) */
+      .maplibregl-ctrl-bottom-right { right: auto; left: env(safe-area-inset-left, 0px);
+        bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
+      body.panel-half .maplibregl-ctrl-bottom-right { bottom: calc(40dvh + 6px); }
     }
 
     /* status toast: feed + location problems must be visible over the MAP,
@@ -742,7 +752,9 @@
       "From — stop, address…":"Von — Haltestelle, Adresse…",
       "Where to?":"Wohin?",
       "Map":"Karte",
-      "Deutsch":"English"
+      "Deutsch":"English",
+      "Map background unavailable — vehicles still update":"Kartenhintergrund nicht verfügbar — Fahrzeuge werden weiter aktualisiert",
+      "no answer":"keine Antwort"
     };
     const i18 = s => (LANG === 'de' && DE[s] != null) ? DE[s] : s;
     function applyLang() {
@@ -766,6 +778,18 @@
     // ---------- HAFAS (Verbundlinie) ----------
     const HAFAS_URL = 'https://verkehrsauskunft.verbundlinie.at/hamm/gate';
     const HAFAS_AID = 'wf7mcf9bv3nv8g5f';
+    // No request may hang for good: poll(), loadStops() and friends refuse to
+    // run while one is in flight, so a stalled fetch (Wi-Fi -> LTE handover)
+    // froze vehicles and stops until reload. A function declaration: the
+    // proxy fetch at boot runs while this script is still evaluating.
+    function withTimeout(ms) {
+      if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) return AbortSignal.timeout(ms);
+      if (typeof AbortController === 'undefined') return undefined;
+      const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal;   // Safari < 16
+    }
+    // "signal timed out" / "The operation was aborted" mean nothing to a rider
+    const netErr = e => e && (e.name === 'TimeoutError' || e.name === 'AbortError') ? new Error(i18('no answer')) : e;
+    const HAFAS_MS = { TripSearch: 30000 };            // everything else: 12 s
     function hafas(meth, req) {
       // No Content-Type header on purpose: the string body goes out as
       // text/plain, a CORS "simple" request, so the browser skips the OPTIONS
@@ -779,13 +803,14 @@
           auth: { type: 'AID', aid: HAFAS_AID },
           client: { id: 'VAO', l: 'vs_stv', type: 'AND' },
           svcReqL: [{ meth, req }]
-        })
+        }),
+        signal: withTimeout(HAFAS_MS[meth] || 12000)
       }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
         .then(d => {
           const res = d.svcResL && d.svcResL[0];
           if (!res || res.err && res.err !== 'OK') throw new Error((res && res.errTxt) || (res && res.err) || 'HAFAS error');
           return res.res;
-        });
+        }).catch(e => { throw netErr(e); });
     }
 
     // prodCtx.line is "xxx" for long-distance services; the real designation is in name/nameS
@@ -2818,7 +2843,10 @@
       if (!map) return;
       refresh3D();
       if (pitched) ensureThree();          // lazy-load the modeled tower
-      map.easeTo({ pitch: pitched ? 45 : 0, duration: REDUCED ? 0 : 650 });
+      // the map is built at this pitch: easing anyway (at 'load') would stop
+      // whatever camera move or gesture started before the basemap was ready
+      const wantPitch = pitched ? 45 : 0;
+      if (Math.abs(map.getPitch() - wantPitch) > 0.1) map.easeTo({ pitch: wantPitch, duration: REDUCED ? 0 : 650 });
       $('btn3d').setAttribute('aria-pressed', String(pitched));
     }
 
@@ -2845,10 +2873,18 @@
       if (map.touchZoomRotate) map.touchZoomRotate.disableRotation();
       if (map.keyboard && map.keyboard.disableRotation) map.keyboard.disableRotation();
       window.__map = map;                        // debug/testing hook
-      map.on('error', () => {});                 // tile/style hiccups shouldn't reach the UI
+      // Tile hiccups stay silent (they carry a sourceId). A style that never
+      // loads leaves the map blank, but must not stop the vehicles.
+      let styleUp = false;
+      map.once('style.load', () => { styleUp = true; });
+      map.on('error', e => {
+        if (!styleUp && !(e && e.sourceId)) toast(i18('Map background unavailable — vehicles still update'), 8000);
+      });
       info = makeInfo();
       map.on('dragstart', () => { meSetFollow(false); setFollowVehicle(null); });
-      map.on('load', () => {
+      // None of this needs the basemap ('load' waits for the style, the sprite
+      // and every initial tile): vehicles, stops and the panel start now.
+      {
         // a flick-pan burst fires several moveends — one settle, one poll (and
         // one synchronous localStorage write), not five
         const onSettle = debounce(() => {
@@ -2880,13 +2916,16 @@
           info.close(); clearRoute();
           if (document.body.classList.contains('card-mode')) { closeCard(); setSheet('peek'); }
         });
-        apply3D();
-        poll(); loadStops();
-        if (!pollTimer) pollTimer = setInterval(poll, 7000);
-        requestAnimationFrame(animate);
+        if (!document.hidden) {                 // a background tab starts on visibilitychange
+          poll();
+          if (!pollTimer) pollTimer = setInterval(poll, 7000);
+          startLoop();
+        }
+        loadStops();
         handleShortcut();
         refreshNearby();
-      });
+      }
+      map.on('load', () => { apply3D(); });     // only the 3D layers need the style
     }
 
     // Theme switch = swap the basemap style. DOM markers survive setStyle; our line
@@ -3284,12 +3323,15 @@
       j.pos.y / 1e6 >= PROXY_RECT.minLat && j.pos.y / 1e6 <= PROXY_RECT.maxLat;
     const freshFeed = f => f && Date.now() - f.t < PROXY_MAX_AGE ? f : null;
     async function loadProxy() {
-      const r = await fetch(PROXY_URL, { cache: 'no-store' });
+      const r = await fetch(PROXY_URL, { cache: 'no-store', signal: withTimeout(8000) });
       if (!r.ok) return null;
       const d = await r.json();
       if (!d || !d.res || Date.now() - d.t > PROXY_MAX_AGE) return null;   // stale — poller down?
       return { res: d.res, t: d.t, stamp: 'p' + d.t };
     }
+    // the first proxy fetch starts while maplibre-gl.js is still parsing and
+    // the basemap loading; the first poll takes it
+    let bootProxy = document.hidden ? null : loadProxy().catch(() => null);
     function hafasRect(sw, ne) {
       return hafas('JourneyGeoPos', {
         maxJny: 400, onlyRT: false,
@@ -3328,8 +3370,10 @@
     // phone's bandwidth.)
     async function poll(view) {
       if (!map) return;
-      if (inFlight) { if (view === true) pollAgain = true; return; }
+      if (inFlight) { if (view === true) pollAgain = true; updateLive(); return; }
       inFlight = true;
+      const boot = bootProxy; bootProxy = null;
+      const fetchPx = () => loadProxy().catch(() => null);
       try {
         const b = map.getBounds();
         if (!b) return;
@@ -3340,7 +3384,7 @@
         // the slower of the two sets the pace, not their sum. A failed HAFAS
         // call there still leaves the Graz vehicles updating.
         const [px, hx] = await Promise.all([
-          held || loadProxy().catch(() => null),
+          held || (boot ? boot.then(px0 => freshFeed(px0) || fetchPx()) : fetchPx()),
           beyond ? hafasRect(sw, ne).catch(e => e) : null
         ]);
         let outer = hx;
@@ -3704,8 +3748,13 @@
       const b = s2.length === 8 ? s2.slice(2) : s2;
       return dd * 86400 + (+b.slice(0, 2)) * 3600 + (+b.slice(2, 4)) * 60 + (+b.slice(4, 6));
     }
-    // seconds from now (negative = past), midnight-wrap tolerant
-    function relSec2(t, nowS) { let d = hafasSec(t) % 86400 - nowS; if (d < -21600) d += 86400; return d; }
+    // seconds from now (negative = past); midnight wraps both ways into
+    // [-6 h, +18 h): at 00:01 a stop passed at 23:59 is behind, not a day ahead
+    function relSec2(t, nowS) {
+      let d = hafasSec(t) % 86400 - nowS;
+      if (d < -21600) d += 86400; else if (d >= 64800) d -= 86400;
+      return d;
+    }
     const easeSS = f => f * f * (3 - 2 * f);
     // where the RT timetable puts the vehicle right now: metres along the plan,
     // or null when times are missing (caller falls back to the plain glide)
@@ -3754,10 +3803,18 @@
       return cum[bi] + bt * (cum[bi + 1] - cum[bi]);
     }
 
-    let lastScaleZoom = -1, lastPitch = -1, rafOn = false, frameNo = 0, lastAnimT = 0;
+    let lastScaleZoom = -1, lastPitch = -1, rafOn = false, frameNo = 0, lastAnimT = 0, animErr = false;
+    // the only way to start the loop: boot and a returning tab both call it,
+    // so a tab that loads in the background can't end up running two
+    function startLoop() { if (rafOn) return; rafOn = true; requestAnimationFrame(animate); }
     function animate() {
-      if (document.hidden) { rafOn = false; return; }   // visibilitychange restarts the loop
-      rafOn = true; frameNo++;
+      if (document.hidden) { rafOn = false; return; }   // no reschedule: visibilitychange restarts the loop
+      frameNo++;
+      // one bad frame must not stop every vehicle for the rest of the session
+      try { animateFrame(); } catch (e) { if (!animErr) { animErr = true; console.error(e); } }
+      requestAnimationFrame(animate);
+    }
+    function animateFrame() {
       const now = Date.now();
       const dtS = lastAnimT ? Math.min(0.2, (now - lastAnimT) / 1000) : 0.016;
       lastAnimT = now;
@@ -3833,7 +3890,6 @@
           map.jumpTo({ center: [p2.lng, p2.lat] });
         } else if (fv === undefined) { setFollowVehicle(null); }
       }
-      requestAnimationFrame(animate);
     }
 
     // keep the screen awake while actively following something
@@ -3883,7 +3939,7 @@
     async function boardFetch(lid, maxJny) {
       const m = /L=(\d+)/.exec(lid || '');
       if (m) try {
-        const r = await fetch('./api/board/' + m[1] + '.json', { cache: 'no-store' });
+        const r = await fetch('./api/board/' + m[1] + '.json', { cache: 'no-store', signal: withTimeout(4000) });
         if (r.ok) { const d = await r.json(); if (d && d.res && Date.now() - d.t < 90000) return d.res; }
       } catch (e) {}
       return hafas('StationBoard', { type: 'DEP', stbLoc: { lid }, maxJny });
@@ -3991,16 +4047,16 @@
         const reg = await navigator.serviceWorker.ready;
         let sub = await reg.pushManager.getSubscription();
         if (!sub) {
-          const key = (await (await fetch('./push/key', { cache: 'no-store' })).text()).trim();
+          const key = (await (await fetch('./push/key', { cache: 'no-store', signal: withTimeout(15000) })).text()).trim();
           const raw = atob(key.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((key.length + 3) % 4));
           sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, c => c.charCodeAt(0)) });
         }
-        const r = await fetch('./push/watch', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        const r = await fetch('./push/watch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: withTimeout(15000),
           body: JSON.stringify({ sub: sub.toJSON(), watch, lang: LANG }) });
         if (!r.ok) throw new Error(await r.text());
         if (bn) bn.classList.add('on');
         toast(i18('Reminder set: ') + watch.lead + i18(' min before it leaves'), 5000);
-      } catch (e) { toast(i18('Could not set the reminder') + ' (' + (e && e.message || e) + ')', 5000); }
+      } catch (e) { const er = netErr(e); toast(i18('Could not set the reminder') + ' (' + (er && er.message || er) + ')', 5000); }
     }
     function showJourney(j, prod) {
       const v = vehicles.get(j.jid);
@@ -4152,7 +4208,7 @@
         if (!cands.length) return;
         const walks = await Promise.all(cands.map(c =>
           fetch('https://routing.openstreetmap.de/routed-foot/route/v1/foot/' +
-                c.lng + ',' + c.lat + ';' + dest.lng + ',' + dest.lat + '?overview=full&geometries=geojson')
+                c.lng + ',' + c.lat + ';' + dest.lng + ',' + dest.lat + '?overview=full&geometries=geojson', { signal: withTimeout(10000) })
             .then(r => r.json()).then(j2 => {
               const rt = j2.routes && j2.routes[0];
               return rt && rt.geometry ? { secs: rt.duration,
@@ -4447,13 +4503,14 @@
     async function drawRoute(v, box, extras) {
       try {
         const res = await hafas('JourneyDetails', { jid: v.jid, getPolyline: true, getPasslist: true });
+        if (!box.isConnected) return;   // card closed or replaced meanwhile: not its route any more
         const poly = res.common && res.common.polyL && res.common.polyL[0];
-        if (poly && poly.crdEncYX) {
+        if (poly && poly.crdEncYX) try {   // (throws before the basemap style has loaded: the card still fills)
           clearRoute();
           setLine('route', decodePath(poly.crdEncYX),
             { 'line-color': vehColor(v.kind, v.line), 'line-opacity': 0.85, 'line-width': 4 });
           routeLine = 'route';
-        }
+        } catch (e) {}
         if (extras) {
           const remL = (res.common && res.common.remL) || [];
           if (remL.some(r => /niederflur/i.test(r.txtN || r.txtS || '') || r.code === 'OB')) {
@@ -4571,6 +4628,10 @@
     const trip = { from: null, to: null, opts: [], sel: -1 };
     const mkEl = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; };
     const suggState = { from: [], to: [] };   // latest suggestion lists, for Enter-to-pick
+    // newest suggestion search per field: a new search, a pick, Clear, Escape
+    // and blur retire older ones, so a late answer can't overwrite or reopen
+    const suggSeq = { from: 0, to: 0 };
+    function stopSugg(w) { suggSeq[w]++; (w === 'from' ? debFrom : debTo).cancel(); }
     // the last destinations, offered under "Where to?" before you type
     let RECENT = [];
     try { RECENT = JSON.parse(localStorage.getItem('bm_recent') || '[]'); } catch (e) {}
@@ -4585,6 +4646,8 @@
       renderSuggestions(which, RECENT.map(r => ({ ...r, kind: i18('Recent'), sub: '', isStop: !!r.lid, d: 0 })), $('sugg-' + which));
     }
     function pickSuggestion(which, item) {
+      stopSugg(which);
+      setArmed(null);                     // picked: a later map tap must not overwrite it
       if (which === 'to') { trip.finalWalk = null; saveRecent(item); }
       // stops carry a HAFAS id (exact routing); places go in as coordinates
       trip[which] = item.lid
@@ -4651,7 +4714,12 @@
     };
     function clearTripLine() { if (tripLine) { removeLine('trip'); removeLine('tripwalk'); tripLine = null; } }
 
-    function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+    function debounce(fn, ms) {
+      let t;
+      const d = (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+      d.cancel = () => clearTimeout(t);
+      return d;
+    }
 
     // The Verbund's search covers all of Austria: "Hauptbahnhof" returns Wien and
     // Innsbruck before Graz. This app is about Graz, so results are restricted to
@@ -4691,7 +4759,9 @@
       try {
         const url = 'https://photon.komoot.io/api?q=' + encodeURIComponent(q) +
           '&lat=' + GRAZ.lat + '&lon=' + GRAZ.lng + '&limit=15&lang=de';
-        const r = await fetch(url);
+        // a free public service: a stall must not hold the list open-ended
+        // (the list draws HAFAS's answer meanwhile, so a slow Photon costs nothing)
+        const r = await fetch(url, { signal: withTimeout(8000) });
         if (!r.ok) return [];
         const d = await r.json();
         return (d.features || [])
@@ -4714,23 +4784,46 @@
       } catch (e) { return []; }
     }
 
-    async function searchLoc(q, box, which) {
-      if (!q || q.length < 2) { if (!q && which === 'to' && RECENT.length) showRecents('to'); else box.hidden = true; return; }
-      const [a, b] = await Promise.all([searchHafas(q), searchPhoton(q)]);
-      const seen = new Set();
-      const near = [...a, ...b]
+    // one row per place: HAFAS lists "Graz Jakominiplatz" (stop) and
+    // "Jakominiplatz, 8010 Graz" (address), Photon the square itself, often
+    // twice. Same name within 150 m is the same place (within 30 m even when
+    // Photon's street lines differ); stops are kept first so they win (exact
+    // routing), then HAFAS entries over Photon's.
+    const sameName = s => s.toLowerCase().replace(/^graz[ ,]+/, '')
+      .replace(/,\s*\d{4}\s+[^,]*$/, '').replace(/\s+/g, ' ').trim();
+    function mergeSugg(a, b) {
+      const cands = [...a, ...b]
         .map(x => ({ ...x, d: kmFromGraz(x.lat, x.lon) }))
         .filter(x => x.d <= SEARCH_RADIUS_KM)
-        .filter(x => {                                  // drop near-identical duplicates
-          const key = x.name.toLowerCase().replace(/^graz /, '') + '@' +
-                      x.lat.toFixed(3) + ',' + x.lon.toFixed(3);
-          if (seen.has(key)) return false;
-          seen.add(key); return true;
-        })
-        // stops get a 1.5 km head start: for a stop-name query the stop should lead
-        .sort((x, y) => (x.d - (x.isStop ? 1.5 : 0)) - (y.d - (y.isStop ? 1.5 : 0)))
-        .slice(0, 9);
-      renderSuggestions(which, near, box);
+        .sort((x, y) => (y.isStop - x.isStop) || (!!y.lid - !!x.lid));   // stable: source order within
+      const kept = [], names = [];
+      for (const x of cands) {
+        const n = sameName(x.name);
+        const dup = kept.some((y, i) => {
+          if (names[i] !== n) return false;
+          // suggestion items carry lon, metresBetween wants lng
+          const m = metresBetween({ lat: x.lat, lng: x.lon }, { lat: y.lat, lng: y.lon });
+          return m < 30 || (m < 150 && !(x.sub && y.sub && x.sub !== y.sub));
+        });
+        if (!dup) { kept.push(x); names.push(n); }
+      }
+      // stops get a 1.5 km head start: for a stop-name query the stop should lead
+      return kept.sort((x, y) => (x.d - (x.isStop ? 1.5 : 0)) - (y.d - (y.isStop ? 1.5 : 0))).slice(0, 9);
+    }
+    function searchLoc(q, box, which) {
+      const seq = ++suggSeq[which];
+      if (!q || q.length < 2) { if (!q && which === 'to' && RECENT.length) showRecents('to'); else box.hidden = true; return; }
+      // draw as each source lands: a slow HAFAS must not hold back Photon's
+      // places (or the reverse). Answers for an older query, or after a pick,
+      // Clear or blur, are dropped.
+      let a = null, b = null;
+      const draw = () => {
+        if (seq !== suggSeq[which] || document.activeElement !== $(which)) return;
+        const list = mergeSugg(a || [], b || []);
+        if (list.length || (a !== null && b !== null)) renderSuggestions(which, list, box);
+      };
+      searchHafas(q).then(r => { a = r; draw(); });
+      searchPhoton(q).then(r => { b = r; draw(); });
     }
     function renderSuggestions(which, near, box) {
       suggState[which] = near;
@@ -4773,12 +4866,15 @@
     }
     const debFrom = debounce(v => searchLoc(v, $('sugg-from'), 'from'), 250);
     const debTo = debounce(v => searchLoc(v, $('sugg-to'), 'to'), 250);
-    $('from').addEventListener('input', e => { trip.from = null; debFrom(e.target.value.trim()); updateClearBtn(); });
-    $('to').addEventListener('input', e => { trip.to = null; trip.finalWalk = null; debTo(e.target.value.trim()); updateClearBtn(); });
-    $('from').addEventListener('blur', () => setTimeout(() => { $('sugg-from').hidden = true; $('from').setAttribute('aria-expanded', 'false'); }, 120));
-    $('to').addEventListener('blur', () => setTimeout(() => { $('sugg-to').hidden = true; $('to').setAttribute('aria-expanded', 'false'); }, 120));
-    $('from').addEventListener('focus', () => setArmed('from'));
-    $('to').addEventListener('focus', () => { setArmed('to'); showRecents('to'); });
+    // typing clears the field's place, and a map tap may fill it again
+    $('from').addEventListener('input', e => { trip.from = null; setArmed('from'); debFrom(e.target.value.trim()); updateClearBtn(); });
+    $('to').addEventListener('input', e => { trip.to = null; trip.finalWalk = null; setArmed('to'); debTo(e.target.value.trim()); updateClearBtn(); });
+    $('from').addEventListener('blur', () => { stopSugg('from'); setTimeout(() => { $('sugg-from').hidden = true; $('from').setAttribute('aria-expanded', 'false'); }, 120); });
+    $('to').addEventListener('blur', () => { stopSugg('to'); setTimeout(() => { $('sugg-to').hidden = true; $('to').setAttribute('aria-expanded', 'false'); }, 120); });
+    // focus arms map-picking only for an EMPTY field: one that holds a place
+    // is being read or edited, and a stray map tap must not replace it
+    $('from').addEventListener('focus', () => { if (!trip.from) setArmed('from'); });
+    $('to').addEventListener('focus', () => { if (!trip.to) setArmed('to'); showRecents('to'); });
 
     // Pin buttons arm map-picking WITHOUT focusing the field, so no keyboard pops up.
     // preventDefault on pointerdown/mousedown is what stops the focus (and the keyboard).
@@ -4811,6 +4907,7 @@
                       name: i18('My location') };
         $('from').value = i18('My location');
         dropPin('from', { lat: pos.coords.latitude, lng: pos.coords.longitude }, i18('My location'));
+        if (armed === 'from') setArmed(null);
       }, () => { $('from').value = ''; showTripErr(i18('Could not get your location — type a start instead.')); },
       { enableHighAccuracy: true, timeout: 8000 });
     });
@@ -4835,6 +4932,7 @@
     async function planTrip() {
       setTripWatch(null);
       if (!trip.from || !trip.to) return showTripErr(i18('Pick a start and a destination from the suggestions.'));
+      setArmed(null);                       // searched: a stray map tap must not swap a field under the results
       $('triperr').hidden = true;
       $('go').disabled = true; $('go').textContent = i18('Searching…');
       clearTripLine();
@@ -4860,6 +4958,7 @@
       $('clear').hidden = !any;
     }
     function clearSearch() {
+      for (const w of ['from', 'to']) stopSugg(w);
       trip.from = null; trip.to = null; trip.finalWalk = null; trip.opts = []; trip.sel = -1;
       setTripWatch(null); $('tmode').value = 'n'; $('twhen').hidden = true;
       $('from').value = ''; $('to').value = '';
@@ -4887,7 +4986,7 @@
           rows[i].scrollIntoView({ block: 'nearest' });
           return;
         }
-        if (e.key === 'Escape') { box.hidden = true; $(w).setAttribute('aria-expanded', 'false'); return; }
+        if (e.key === 'Escape') { stopSugg(w); box.hidden = true; $(w).setAttribute('aria-expanded', 'false'); return; }
         if (e.key !== 'Enter') return;
         if (!box.hidden && list.length) {
           e.preventDefault();
@@ -4930,7 +5029,7 @@
           // beeline stays as the fallback if it fails
           let walkPath = null;
           fetch('https://routing.openstreetmap.de/routed-foot/route/v1/foot/' +
-                wA.lng + ',' + wA.lat + ';' + wB.lng + ',' + wB.lat + '?overview=full&geometries=geojson')
+                wA.lng + ',' + wA.lat + ';' + wB.lng + ',' + wB.lat + '?overview=full&geometries=geojson', { signal: withTimeout(10000) })
             .then(r => r.json()).then(j => {
               const rt = j.routes && j.routes[0];
               if (!rt || !rt.geometry) return;
@@ -5082,7 +5181,7 @@
           Promise.all(walkSegs.map(sg => sg.length > 2 ? Promise.resolve(sg) :  // already routed
             fetch('https://routing.openstreetmap.de/routed-foot/route/v1/foot/' +
                   sg[0].lng + ',' + sg[0].lat + ';' + sg[1].lng + ',' + sg[1].lat +
-                  '?overview=full&geometries=geojson')
+                  '?overview=full&geometries=geojson', { signal: withTimeout(10000) })
               .then(r => r.json())
               .then(j => {
                 const rt = j.routes && j.routes[0];
@@ -5149,12 +5248,12 @@
       $('sugg-from').hidden = true; $('sugg-to').hidden = true;
     }
     function togglePanel(hide) {
-      const c = map && map.getCenter();
       if (hide) dismissKeyboard();
       document.body.classList.toggle('panel-hidden', hide);
       if (hide) window.scrollTo(0, 0);
-      // the map container changes size — recentre once the transition has settled
-      if (c) setTimeout(() => { if (map) map.setCenter(c); }, 320);
+      // (#mapstage is position:fixed at every size: the map never resizes
+      // here, so there is nothing to recentre — a delayed setCenter only
+      // cancelled whatever camera move or gesture had started meanwhile)
     }
     $('cardback').addEventListener('click', closeCard);
     $('panelhide').addEventListener('click', () => togglePanel(true));
@@ -5166,7 +5265,6 @@
     // its own and never competes with the map's pan surface.
     const isMobile = () => MOBILE_MQ.matches;
     function setSheet(state) {              // 'full' | 'half' | 'peek'
-      const c = map && map.getCenter();
       const prev = sheetState();
       if (state !== 'full') dismissKeyboard();
       document.body.classList.remove('panel-hidden');
@@ -5178,7 +5276,6 @@
       if (state !== 'full') window.scrollTo(0, 0);
       updatePeek();
       if (state === 'full') refreshNearby();
-      if (c) setTimeout(() => { if (map) map.setCenter(c); }, 320);
     }
     function sheetState() {
       return document.body.classList.contains('panel-peek') ? 'peek'
@@ -5434,7 +5531,7 @@
       } else if (map && !pollTimer) {
         poll(); pollTimer = setInterval(poll, 7000);
         if (meFollow) meStartWatch();
-        if (!rafOn) requestAnimationFrame(animate);   // the loop parks itself while hidden
+        startLoop();                                  // the loop parks itself while hidden
         syncWakeLock();                               // the OS drops wake locks on hide — retake
       }
     });

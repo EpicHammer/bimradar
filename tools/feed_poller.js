@@ -27,10 +27,10 @@ position, metres along seg). The client animates BY CLOCK along the plan —
 accelerate, brake, dwell — instead of trailing the 5 s reports. Times stay
 raw HAFAS strings so the client's local clock does the timezone math.
 
-Payload: {"t": <epoch ms written>, "rect": {...}, "res": <raw HAFAS res>}
-"res" is exactly what HAFAS JourneyGeoPos returns (plus "pth"/"seg"/"st"/
-"sp" per journey), so the client ingests it with the same code path it
-uses for direct queries.
+Payload: {"t": <epoch ms of the position fix>, "rect": {...}, "res": <HAFAS res>}
+"res" is the HAFAS JourneyGeoPos answer (plus "pth"/"seg"/"st"/"sp" per
+journey), trimmed by slimFeed() to the fields the client reads, so the
+client ingests it with the same code path it uses for direct queries.
 
 Zero npm dependencies — global fetch + node:fs only (Node >= 18). */
 'use strict';
@@ -39,14 +39,14 @@ const fs = require('node:fs');
 const HAFAS_URL = 'https://verkehrsauskunft.verbundlinie.at/hamm/gate';
 const OUT = process.env.BM_OUT || '/var/apps/eliashammer/bimradar/api/vehicles.json';
 const POLL_S = 5;
-const DETAILS_PER_CYCLE = 14;   // polyline fetches per cycle: warms ~170 jids/min
+const DETAILS_PER_CYCLE = 14;   // at most this many JourneyDetails per cycle (~170/min); fewer when HAFAS is slow
 const POLY_RETRY_S = 300;       // a jid whose polyline fetch failed: retry after this
 const EVICT_S = 180;            // forget journeys not seen for this long
 const TT_REFRESH_S = 60;        // refetch a journey's RT passlist this often
 // Graz + surroundings; must match PROXY_RECT in index.html
 const RECT = { minLon: 15.30, maxLon: 15.60, minLat: 46.98, maxLat: 47.15 };
 
-async function gate(meth, req) {
+async function gate(meth, req, ms = 15000) {
   const body = {
     ver: '1.59', lang: 'deu', ext: 'VAO.22',
     auth: { type: 'AID', aid: 'wf7mcf9bv3nv8g5f' },
@@ -57,7 +57,7 @@ async function gate(meth, req) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15000)
+    signal: AbortSignal.timeout(ms)
   });
   const d = await resp.json();
   const L = d.svcResL || [];
@@ -164,7 +164,8 @@ class PolyCache {
   }
   async fetch(jid) {
     try {
-      const det = await gate('JourneyDetails', { jid, getPolyline: true, getPasslist: true });
+      // short timeout: the warm-up runs inside the 5 s poll slot
+      const det = await gate('JourneyDetails', { jid, getPolyline: true, getPasslist: true }, 5000);
       const polyL = (det.common || {}).polyL || [];
       const enc = polyL.length ? polyL[0].crdEncYX : null;
       const pts = enc ? decodePoly(enc) : null;
@@ -208,6 +209,23 @@ class PolyCache {
   }
 }
 
+/** Trim the HAFAS answer to what index.html reads from the proxy file (ingest,
+ *  kindOf, lineName, delayOf, noteHim): ~45% smaller raw, ~35% gzipped. Mutates
+ *  res. A client feature that starts reading another HAFAS field must keep it
+ *  here too — direct-HAFAS clients would see it, proxy clients would not. */
+function slimFeed(res) {
+  const c = res.common || {};
+  c.locL = (c.locL || []).map(l => (l ? { name: l.name } : null));          // indices stay stable
+  c.prodL = (c.prodL || []).map(p => p && { name: p.name, nameS: p.nameS, cls: p.cls,
+    prodCtx: p.prodCtx && { line: p.prodCtx.line, catOutL: p.prodCtx.catOutL, catOutS: p.prodCtx.catOutS } });
+  delete c.icoL; delete c.opL;                                               // himL stays: noteHim()
+  for (const j of res.jnyL || []) {
+    for (const k of ['date', 'isBase', 'isRedir', 'proc', 'status']) delete j[k];
+    if (j.stopL) j.stopL = j.stopL.map(s => ({ locX: s.locX, aTimeR: s.aTimeR, aTimeS: s.aTimeS, dTimeR: s.dTimeR, dTimeS: s.dTimeS }));
+  }
+  return res;
+}
+
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function main() {
@@ -224,31 +242,16 @@ async function main() {
           urCrd: { x: Math.round(RECT.maxLon * 1e6), y: Math.round(RECT.maxLat * 1e6) }
         }
       });
+      // the moment these positions describe: "t" is stamped now, not after the
+      // JourneyDetails warm-up, which runs AFTER the write below — a slow HAFAS
+      // must never publish old positions under a fresh timestamp
+      const tFix = Date.now();
       const jny = (res.jnyL || []).filter(j => j.pos && j.jid);
-      const now = Date.now() / 1000;
-      for (const j of jny) cache.seen.set(j.jid, now);
+      for (const j of jny) cache.seen.set(j.jid, tFix / 1000);
 
-      // warm the polyline cache, a few journeys per cycle
-      let budget = DETAILS_PER_CYCLE;
-      for (const j of jny) {
-        if (budget <= 0) break;
-        if (cache.want(j.jid)) {
-          await cache.fetch(j.jid);
-          budget--;
-        }
-      }
-      // leftover budget keeps the RT passlists fresh, stalest first
-      if (budget > 0) {
-        const stale = jny.filter(j => cache.wantTT(j.jid)).sort((a, b) =>
-          ((cache.tt.get(a.jid) || { at: 0 }).at) - ((cache.tt.get(b.jid) || { at: 0 }).at));
-        for (const j of stale) {
-          if (budget <= 0) break;
-          await cache.fetch(j.jid);
-          budget--;
-        }
-      }
-
-      // enrich: snap reports onto the route, then ship the street path
+      // enrich with whatever the cache holds (a journey seen for the first time
+      // ships unsnapped once and gets pth/seg/st from the next cycle on):
+      // snap reports onto the route, then ship the street path
       for (const j of jny) {
         const jid = j.jid;
         let cur = [j.pos.y / 1e6, j.pos.x / 1e6];
@@ -310,10 +313,34 @@ async function main() {
       }
       cache.evict();
 
-      const payload = { t: Date.now(), rect: RECT, res };
+      const payload = { t: tFix, rect: RECT, res: slimFeed(res) };
       const tmp = OUT + '.tmp';
       fs.writeFileSync(tmp, JSON.stringify(payload));
       fs.renameSync(tmp, OUT);   // atomic: readers never see a half-written file
+
+      // warm the polyline cache for the NEXT cycle, a few journeys per cycle and
+      // while this cycle has time left — but always at least two, so a slow
+      // GeoPos answer can't stop polylines and RT passlists from refreshing
+      const deadline = t0 + POLL_S * 1000 - 300;
+      let budget = DETAILS_PER_CYCLE;
+      const mayFetch = () => budget > 0 && (Date.now() < deadline || DETAILS_PER_CYCLE - budget < 2);
+      for (const j of jny) {
+        if (!mayFetch()) break;
+        if (cache.want(j.jid)) {
+          await cache.fetch(j.jid);
+          budget--;
+        }
+      }
+      // leftover budget keeps the RT passlists fresh, stalest first
+      if (mayFetch()) {
+        const stale = jny.filter(j => cache.wantTT(j.jid)).sort((a, b) =>
+          ((cache.tt.get(a.jid) || { at: 0 }).at) - ((cache.tt.get(b.jid) || { at: 0 }).at));
+        for (const j of stale) {
+          if (!mayFetch()) break;
+          await cache.fetch(j.jid);
+          budget--;
+        }
+      }
     } catch (e) {
       // keep the last good file; the client detects staleness via "t"
       console.error('poll failed:', e && e.stack ? e.stack : e);
@@ -339,17 +366,27 @@ async function boards() {
   const dir = require('node:path').dirname(OUT) + '/board';
   try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
   const stops = [];
-  for (const name of HOT_STOPS) {
-    try {
-      const res = await gate('LocMatch', { input: { field: 'S', loc: { type: 'S', name }, maxLoc: 3 } });
-      const hit = ((res.match && res.match.locL) || []).find(l => l.type === 'S' && l.lid && /L=\d+/.test(l.lid));
-      if (hit) stops.push({ name: hit.name, lid: hit.lid, ext: /L=(\d+)/.exec(hit.lid)[1] });
-      else console.error('boards: no stop for ' + name);
-    } catch (e) { console.error('boards: LocMatch failed for ' + name); }
-    await sleep(1200);
+  const missing = new Set(HOT_STOPS);          // names LocMatch hasn't resolved yet
+  let resolvedAt = 0;
+  // 1.2 s apart, only the names still missing: a HAFAS outage at boot heals
+  // itself instead of leaving the board cache off until the next restart
+  async function resolve() {
+    for (const name of [...missing]) {
+      try {
+        const res = await gate('LocMatch', { input: { field: 'S', loc: { type: 'S', name }, maxLoc: 3 } });
+        const hit = ((res.match && res.match.locL) || []).find(l => l.type === 'S' && l.lid && /L=\d+/.test(l.lid));
+        if (hit) { stops.push({ name: hit.name, lid: hit.lid, ext: /L=(\d+)/.exec(hit.lid)[1] }); missing.delete(name); }
+        else console.error('boards: no stop for ' + name);
+      } catch (e) { console.error('boards: LocMatch failed for ' + name); }
+      await sleep(1200);
+    }
+    resolvedAt = Date.now();
+    console.error('boards: caching ' + stops.length + ' stops' + (missing.size ? ', ' + missing.size + ' unresolved' : ''));
   }
-  console.error('boards: caching ' + stops.length + ' stops');
+  await resolve();
+  // stops only grows, so the round-robin index stays in range
   for (let i = 0; ; i = (i + 1) % Math.max(1, stops.length)) {
+    if (missing.size && Date.now() - resolvedAt > (stops.length ? 10 * 60e3 : 60e3)) await resolve();
     const s = stops[i];
     if (s) try {
       const res = await gate('StationBoard', { type: 'DEP', stbLoc: { lid: s.lid }, maxJny: 12 });
