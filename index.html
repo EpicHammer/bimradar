@@ -180,7 +180,7 @@
     body.card-mode #nearrow, body.card-mode #himbar, body.card-mode #tripbar { display: none; }
     .cardback { display: inline-flex; align-items: center; gap: .25rem; border: 0;
       background: transparent; color: var(--accent); font: inherit; font-size: .92rem;
-      font-weight: 650; padding: 0 .3rem .55rem 0; cursor: pointer; }
+      font-weight: 650; padding: 0 .3rem .75rem 0; cursor: pointer; }
     .cardback svg { width: 17px; height: 17px; }
     #cardbody .iw { background: transparent; padding: 0; }
     .followbtn { display: inline-flex; align-items: center; gap: .3rem; margin-top: .5rem;
@@ -342,6 +342,29 @@
       background: color-mix(in srgb, #d99400 12%, transparent);
       border-radius: 8px; padding: .3rem .45rem; margin-top: .3rem; }
     .iw .stops { margin-top: .45rem; border-top: 1px solid var(--line); padding-top: .35rem; }
+    /* vehicle card: header (line + Follow) / route / status row / extras / stops */
+    .iw .ihead { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+    .iw .ihead b { margin: 0; min-width: 0; }
+    .iw .ihead .followbtn { margin-top: 0; flex: none; }
+    .iw .ihead + .canon { margin-top: .45rem; }
+    .iw .canon, .iw .dirn { line-height: 1.35; }
+    .iw .canon + .dirn { margin-top: .2rem; }
+    .iw .status { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .6rem;
+      margin-top: .7rem; padding-top: .65rem; border-top: 1px solid var(--line); }
+    .iw .status .dchip { margin-top: 0; }
+    .iw .status .next { flex: 1 1 12rem; min-width: 0; }
+    .iw .extras:not(:empty) { display: flex; flex-direction: column; align-items: flex-start; gap: .45rem; margin-top: .7rem; }
+    .iw .extras .attr, .iw .extras .warnmsg { margin-top: 0; }
+    .iw .extras + .stops { margin-top: .7rem; padding-top: .55rem; }
+    .iw .stops .strow + .strow { margin-top: .2rem; }
+    /* the phone card has the whole sheet: a little larger and roomier */
+    #cardbody .iw b { font-size: 1.12rem; }
+    #cardbody .iw .canon { font-size: 1.02rem; }
+    #cardbody .iw .dirn, #cardbody .iw .next, #cardbody .iw .strow { font-size: .9rem; }
+    #cardbody .iw .attr { font-size: .88rem; }
+    #cardbody .iw .warnmsg { font-size: .85rem; padding: .5rem .65rem; border-radius: 10px; line-height: 1.35; }
+    #cardbody .iw .dchip { font-size: .82rem; padding: .12rem .6rem; }
+    #cardpane:focus { outline: none; }
     .iw .strow { display: flex; gap: .5rem; font-size: .82rem; }
     .iw .tm { font-variant-numeric: tabular-nums; min-width: 2.8em; }
     .iw .tm.rt { font-weight: 650; }
@@ -599,7 +622,7 @@
 
     </header>
 
-    <section id="cardpane" role="dialog" aria-label="Details">
+    <section id="cardpane" role="dialog" aria-label="Details" tabindex="-1">
       <button class="cardback" id="cardback">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Map
       </button>
@@ -962,7 +985,7 @@
         document.getElementById('cardbody').replaceChildren(node);
         document.body.classList.add('card-mode');
         setSheet('half');
-        $('cardback').focus({ preventScroll: true });   // screen readers land in the card
+        $('cardpane').focus({ preventScroll: true });   // screen readers land in the card (no focus ring on "Map")
         if (map && pos) map.easeTo({ center: [pos.lng, pos.lat],
           offset: [0, -Math.round(window.innerHeight * 0.16)], duration: REDUCED ? 0 : 380 });
       } else {
@@ -4566,7 +4589,10 @@
       ln.className = 'ln tap'; ln.style.background = vehColor(v.kind, v.line); ln.textContent = v.line;
       ln.title = i18('Show this line'); ln.addEventListener('click', e => { e.stopPropagation(); setLineFocus(v.line); });
       head.append(ln, document.createTextNode(v.kindName || KIND_LABEL[v.kind] || ''));
-      box.appendChild(head);
+      const ihead = document.createElement('div');
+      ihead.className = 'ihead';
+      ihead.appendChild(head);
+      box.appendChild(ihead);
 
       // the line's canonical name (GTFS), e.g. "Andritz – Puntigam Bahnhof"
       const canon = LINES[v.line];
@@ -4587,21 +4613,24 @@
       fb.setAttribute('aria-pressed', String(followJid === v.jid));
       fb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px"><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/><path d="M12 3v3.5M12 17.5V21M3 12h3.5M17.5 12H21"/></svg> Follow';
       fb.addEventListener('click', () => setFollowVehicle(followJid === v.jid ? null : v.jid));
-      box.appendChild(fb);
-      if (v.nextStop) {
-        const nx = document.createElement('div');
-        nx.className = 'next';
-        nx.textContent = i18('Next: ') + v.nextStop + (v.nextTime ? ' · ' + v.nextTime : '');
-        box.appendChild(nx);
-      }
-
+      ihead.appendChild(fb);
+      // status row: punctuality chip + next stop, under a divider
+      const status = document.createElement('div');
+      status.className = 'status';
       const dtxt = delayText(v.delay);
       if (dtxt) {
         const chip = document.createElement('span');
         chip.className = 'dchip ' + (v.delay > 4 ? 'bad' : v.delay > 1 ? 'warn' : 'ok');
         chip.textContent = dtxt;
-        box.appendChild(chip);
+        status.appendChild(chip);
       }
+      if (v.nextStop) {
+        const nx = document.createElement('div');
+        nx.className = 'next';
+        nx.textContent = i18('Next: ') + v.nextStop + (v.nextTime ? ' · ' + v.nextTime : '');
+        status.appendChild(nx);
+      }
+      if (status.childNodes.length) box.appendChild(status);
       const extras = document.createElement('div');
       extras.className = 'extras';
       box.appendChild(extras);
