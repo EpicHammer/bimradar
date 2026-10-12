@@ -3375,9 +3375,16 @@
       const b = map && map.getBounds();
       if (!b) return;
       const sw = b.getSouthWest(), ne = b.getNorthEast();
-      const inView = j => j.pos &&
-        j.pos.x / 1e6 >= sw.lng - VIEW_PAD && j.pos.x / 1e6 <= ne.lng + VIEW_PAD &&
-        j.pos.y / 1e6 >= sw.lat - VIEW_PAD && j.pos.y / 1e6 <= ne.lat + VIEW_PAD;
+      const inBox = (lng, lat) => lng >= sw.lng - VIEW_PAD && lng <= ne.lng + VIEW_PAD && lat >= sw.lat - VIEW_PAD && lat <= ne.lat + VIEW_PAD;
+      // in view by its report OR by where it is drawn: without live data (night
+      // Fernbusse, SEV) the timetable model can draw a bus km from HAFAS's own
+      // estimate, and zooming in on the drawn bus would otherwise drop it
+      const inView = j => {
+        if (!j.pos) return false;
+        if (inBox(j.pos.x / 1e6, j.pos.y / 1e6)) return true;
+        const v = vehicles.get(j.jid), p = v && v.marker && v.marker.getPosition();
+        return !!(p && inBox(p.lng, p.lat));
+      };
       const px = freshFeed(feed.proxy), ox = freshFeed(feed.outer), parts = [];
       if (px) parts.push({ stamp: px.stamp, res: { ...px.res, jnyL: (px.res.jnyL || []).filter(inView) } });
       // inside Graz the proxy's reports win: they carry the street geometry

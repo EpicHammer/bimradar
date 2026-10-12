@@ -190,12 +190,13 @@ async function pushTests() {
   const ctx = vm.createContext({ Math, Date, String, Number, JSON, console, Set, Map });
   vm.runInContext(
     'let __view = null, __drawn = [], followJid = null;\n' +
-    'const feed = { proxy: null, outer: null };\n' +
+    'const feed = { proxy: null, outer: null }, vehicles = new Map();\n' +
     'const map = { getBounds: () => __view && { getSouthWest: () => ({ lng: __view[0], lat: __view[1] }), getNorthEast: () => ({ lng: __view[2], lat: __view[3] }) } };\n' +
     'const ingest = parts => { __drawn = parts; };\n' +
     ['PROXY_RECT', 'PROXY_MAX_AGE', 'VIEW_PAD', 'proxyHolds', 'inProxyRect', 'freshFeed', 'feedCovers', 'showFeed'].map(n => lift(script, n)).join('\n') +
     '\nthis.run = (view, proxy, outer) => { __view = view; feed.proxy = proxy; feed.outer = outer; __drawn = null; showFeed();' +
-    ' return { covers: feedCovers(), parts: __drawn && __drawn.map(p => ({ stamp: p.stamp, jids: p.res.jnyL.map(j => j.jid) })) }; };', ctx);
+    ' return { covers: feedCovers(), parts: __drawn && __drawn.map(p => ({ stamp: p.stamp, jids: p.res.jnyL.map(j => j.jid) })) }; };' +
+    '\nthis.drawAt = (jid, lng, lat) => vehicles.set(jid, { marker: { getPosition: () => ({ lng, lat }) } });', ctx);
   const j = (jid, lng, lat) => ({ jid, pos: { x: Math.round(lng * 1e6), y: Math.round(lat * 1e6) } });
   const now = Date.now();
   const proxy = { t: now, stamp: 'p1', res: { common: {}, jnyL: [j('hbf', 15.41, 47.07), j('puntigam', 15.43, 47.01)] } };
@@ -212,6 +213,10 @@ async function pushTests() {
   ok(r.parts.length === 1 && r.parts[0].jids.join() === 'hbf,gleisdorf', 'feed: with the poller down HAFAS answers for all of the view');
   r = ctx.run(city, { ...proxy, t: now - 60000 }, null);
   ok(!r.covers && r.parts === null, 'feed: a stale proxy file is neither drawn nor trusted to cover the view');
+  // a timetable-only bus drawn in view while HAFAS places it 2 km away: zooming in on it must not drop it
+  ctx.drawAt('puntigam', 15.43, 47.07);
+  r = ctx.run(city, proxy, null);
+  ok(r.parts[0].jids.join() === 'hbf,puntigam', 'feed: a vehicle drawn in view stays, even if its report is outside');
 }
 {
   // ingest(): the first part to report a journey draws it, and a redraw from
