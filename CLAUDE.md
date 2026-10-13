@@ -61,5 +61,7 @@ in a `vm` context.
   *.basemaps.cartocdn.com, routing.openstreetmap.de, photon.komoot.io,
   bimradar.at, overpass-api.de, nominatim.openstreetmap.org,
   api.opentopodata.org.
+- `gh pr …` and other `gh` commands that use GraphQL fail with a 403 in the
+  cloud. Use `gh api repos/EpicHammer/bimradar/…` (REST) instead.
 - There is no SSH to the server. Server changes (systemd, nginx, push server)
   are done from the owner's PC.
