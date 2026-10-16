@@ -2946,6 +2946,7 @@
         }
         loadStops();
         handleShortcut();
+        restoreLineFocus();
         refreshNearby();
       }
       map.on('load', () => { apply3D(); });     // only the 3D layers need the style
@@ -2956,7 +2957,7 @@
     function setTheme() {
       if (!map) return;
       clearStops(); lastStopKey = ''; clearRoute(); clearTripLine();
-      setLineFocus(null);
+      removeLine('linefocus'); lineRouteTried = null;   // the focus stays; its route is redrawn on the new style
       map.setStyle(isDark() ? STYLE.dark : STYLE.light);
       // 'idle' fires whether setStyle diffed or fully reloaded; 'style.load'
       // only fires on a full reload — waiting on it left 3D buildings missing
@@ -3390,7 +3391,7 @@
       // inside Graz the proxy's reports win: they carry the street geometry
       if (ox) parts.push({ stamp: ox.stamp, res: { ...ox.res,
         jnyL: (ox.res.jnyL || []).filter(j => inView(j) && !(px && inProxyRect(j))) } });
-      if (parts.length) ingest(parts);
+      if (parts.length) { ingest(parts); retryLineRoute(); }
     }
     // view: the view changed. A poll already in flight (asked for the old
     // view) is then followed by one more instead of this one being dropped,
@@ -3976,9 +3977,32 @@
     }
     // line view: one line's route + vehicles stay bright, everything else dims
     let lineFocus = null;
+    // The focused line is remembered across visits ("my Bim"), and a link
+    // ?line=5 opens with it. Its route is drawn once a vehicle of the line is
+    // known (at startup the feed hasn't answered yet): lineRouteTried says
+    // which line already had its one attempt.
+    let lineRouteTried = null;
+    const normLine = s => { s = String(s == null ? '' : s).trim().toUpperCase(); return /^[0-9A-Z]{1,8}$/.test(s) ? s : null; };
+    function rememberLine() {
+      try { lineFocus ? localStorage.setItem('bm_line', lineFocus) : localStorage.removeItem('bm_line'); } catch (e) {}
+      if (lineFocus) return;
+      const qp = new URLSearchParams(location.search);       // cleared: a reload mustn't bring it back
+      if (qp.has('line')) { qp.delete('line'); history.replaceState(null, '', location.pathname + (qp.toString() ? '?' + qp : '') + location.hash); }
+    }
+    function restoreLineFocus() {
+      let saved = null; try { saved = localStorage.getItem('bm_line'); } catch (e) {}
+      const line = normLine(new URLSearchParams(location.search).get('line')) || normLine(saved);
+      if (line) setLineFocus(line);
+    }
+    function retryLineRoute() {
+      if (!lineFocus || lineRouteTried === lineFocus || !map || !map.isStyleLoaded()) return;
+      const v = [...vehicles.values()].find(x => x.line === lineFocus);
+      if (v) setLineFocus(lineFocus, v.jid, v.kind);
+    }
     async function setLineFocus(line, jid, kind) {
       if (lineFocus === line && !jid) line = null;
       lineFocus = line;
+      rememberLine();
       const pill = $('linepill');
       removeLine('linefocus');
       if (!line) { pill.hidden = true; updateOcclusion(); return; }
@@ -3987,7 +4011,8 @@
       updateOcclusion();
       const v = [...vehicles.values()].find(x => x.line === line);
       const useJid = jid || (v && v.jid);
-      if (!useJid || !map) return;
+      if (!useJid || !map || !map.isStyleLoaded()) return;     // retryLineRoute() draws it later
+      lineRouteTried = line;
       try {
         const res = await hafas('JourneyDetails', { jid: useJid, getPolyline: true });
         const poly = res.common && res.common.polyL && res.common.polyL[0];
