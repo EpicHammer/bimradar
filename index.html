@@ -183,12 +183,6 @@
       font-weight: 650; padding: 0 .3rem .75rem 0; cursor: pointer; }
     .cardback svg { width: 17px; height: 17px; }
     #cardbody .iw { background: transparent; padding: 0; }
-    .followbtn { display: inline-flex; align-items: center; gap: .3rem; margin-top: .5rem;
-      border: 1px solid var(--line); border-radius: 999px;
-      background: color-mix(in srgb, var(--accent) 8%, var(--card)); color: var(--fg);
-      font: inherit; font-size: .8rem; font-weight: 600; padding: .28rem .75rem; cursor: pointer;
-      transition: background .15s ease, color .15s ease, border-color .15s ease; }
-    .followbtn[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
 
     .tripform { display: grid; gap: .5rem; }
     /* directions card: origin dot — dotted connector — destination dot, with a
@@ -342,10 +336,9 @@
       background: color-mix(in srgb, #d99400 12%, transparent);
       border-radius: 8px; padding: .3rem .45rem; margin-top: .3rem; }
     .iw .stops { margin-top: .45rem; border-top: 1px solid var(--line); padding-top: .35rem; }
-    /* vehicle card: header (line + Follow) / route / status row / extras / stops */
+    /* vehicle card: header / route / status row / extras / stops */
     .iw .ihead { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
     .iw .ihead b { margin: 0; min-width: 0; }
-    .iw .ihead .followbtn { margin-top: 0; flex: none; }
     .iw .ihead + .canon { margin-top: .45rem; }
     .iw .canon, .iw .dirn { line-height: 1.35; }
     .iw .canon + .dirn { margin-top: .2rem; }
@@ -447,18 +440,19 @@
       transition: opacity .25s ease; }
     .toast[hidden] { display: block; opacity: 0; visibility: hidden; }
 
-    /* persistent "following a vehicle" pill — the exit is always on screen */
-    .followpill { position: fixed; left: 50%; transform: translateX(-50%);
-      bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 6;
-      display: inline-flex; align-items: center; gap: .45rem; min-height: 40px;
-      border: 1px solid var(--line); border-radius: 999px; cursor: pointer;
-      background: color-mix(in srgb, var(--card) 84%, transparent);
-      backdrop-filter: blur(12px) saturate(1.5); -webkit-backdrop-filter: blur(12px) saturate(1.5);
-      box-shadow: inset 0 1px 0 var(--glasshi), 0 5px 18px rgba(0,0,0,.28);
-      color: var(--fg); font: inherit; font-size: .84rem; font-weight: 650; padding: .3rem .95rem; }
-    .followpill[hidden] { display: none; }   /* display:inline-flex would beat the UA's [hidden] rule */
-    .followpill .x { color: var(--muted); font-size: 1rem; line-height: 1; }
-    .linepill { bottom: auto; top: calc(64px + env(safe-area-inset-top, 0px)); }
+    /* the focused line: its own coloured badge + a clear button, centred over the map */
+    .linepill { position: fixed; left: 50%; transform: translateX(-50%); z-index: 6;
+      top: calc(14px + env(safe-area-inset-top, 0px));
+      display: inline-flex; align-items: center; gap: .3rem; height: 36px; padding: 0 5px;
+      border: 1px solid var(--line); border-radius: 12px; cursor: pointer; font: inherit;
+      background: var(--card); box-shadow: 0 3px 12px rgba(0,0,0,.16); }
+    .linepill[hidden] { display: none; }   /* display:inline-flex would beat the UA's [hidden] rule */
+    .linepill .ln { font-size: .95rem; line-height: 26px; min-width: 30px; text-align: center; padding: 0 .45rem; margin: 0; }
+    .linepill .x { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px;
+      color: var(--muted); font-size: .8rem; transition: background .12s ease, color .12s ease; }
+    .linepill:hover .x { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+    /* desktop: centre over the map, not over map + side panel */
+    @media not all and (max-width: 44rem) { body:not(.panel-hidden) .linepill { left: calc(50% + 170px); } }
     .ln.tap { cursor: pointer; }
     /* planner time */
     .whenrow { display: flex; gap: .4rem; }
@@ -499,7 +493,6 @@
       background: color-mix(in srgb, #d99400 12%, transparent); color: var(--fg); font: inherit;
       font-size: .8rem; line-height: 1.4; padding: .45rem .7rem; cursor: pointer; }
     .himrow .himic { color: #d99400; flex: none; }
-    body.panel-half .followpill { bottom: calc(40dvh + 16px); }
 
     /* favourite stops: a scrolling shelf of H-badge icons, Apple Maps style */
     #favrow { display: block; margin: .1rem 0 .6rem; }
@@ -596,8 +589,7 @@
     <button class="tbtn" id="fabtheme" title="Light/dark" aria-label="Switch light/dark theme"></button>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-  <button class="followpill" id="followpill" hidden></button>
-  <button class="followpill linepill" id="linepill" hidden></button>
+  <button class="linepill" id="linepill" hidden></button>
   <main>
     <button class="grabber" id="grabber" title="Panel" aria-label="Panel" aria-expanded="true">
       <span class="peek" id="peek"></span>
@@ -716,11 +708,11 @@
       "Destination":"Ziel",
       "Favourites":"Favoriten",
       "Find connections":"Verbindungen suchen",
-      "Following ":"Folge ",
       "Geolocation is not available in this browser.":"Dieser Browser unterstützt keine Standortbestimmung.",
       "Getting there":"Anreise",
       "Landmark":"Sehenswürdigkeit",
       "Line ":"Linie ",
+      "Show all lines":"Alle Linien zeigen",
       "Live feed hiccup (":"Live-Daten hängen (",
       "Loading departures…":"Lade Abfahrten…",
       "Locating…":"Orte…",
@@ -900,7 +892,6 @@
     // keep the sheet UI instead of falling back to the desktop sidebar
     const MOBILE_MQ = window.matchMedia('(max-width: 44rem), (pointer: coarse) and (max-width: 62rem) and (max-height: 30rem)');
     const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let followJid = null;         // camera chases this vehicle while set
     const vehicles = new Map();   // jid -> {marker, kind, line, dir, from, to, t0, dur, head}
     const LMK_OCC = [];           // landmark occluders, filled once by the 3D layer's onAdd
     const filters = { tram: true, bus: true, regio: true, night: true, train: true };
@@ -2904,7 +2895,7 @@
         if (!styleUp && !(e && e.sourceId)) toast(i18('Map background unavailable — vehicles still update'), 8000);
       });
       info = makeInfo();
-      map.on('dragstart', () => { meSetFollow(false); setFollowVehicle(null); });
+      map.on('dragstart', () => { meSetFollow(false); });
       // None of this needs the basemap ('load' waits for the style, the sprite
       // and every initial tile): vehicles, stops and the panel start now.
       {
@@ -2924,10 +2915,8 @@
         // after the settle debounce plus a network round trip. Inside Graz the
         // held proxy file answers for any view and the 7 s poll keeps it fresh;
         // a view reaching past it asks for the rest straight away (a burst of
-        // moveends costs one request plus one queued follow-up). The chase cam
-        // moves the map every other frame, so it is left to the timer.
+        // moveends costs one request plus one queued follow-up).
         map.on('moveend', () => {
-          if (followJid) return;
           showFeed();
           if (!feedCovers()) poll(true);
         });
@@ -3911,22 +3900,12 @@
           }
         }
       }
-      // chase cam: glue the centre to the followed vehicle's glide. Every 2nd
-      // frame — each jumpTo is a full GL re-render; a 30 fps chase looks the
-      // same and halves the GPU cost of following.
-      if (followJid && (frameNo & 1) === 0) {
-        const fv = vehicles.get(followJid);
-        if (fv && fv.marker.getMap()) {
-          const p2 = fv.marker.getPosition();
-          map.jumpTo({ center: [p2.lng, p2.lat] });
-        } else if (fv === undefined) { setFollowVehicle(null); }
-      }
     }
 
-    // keep the screen awake while actively following something
+    // keep the screen awake while locate-me follows you
     let wakeLock = null;
     async function syncWakeLock() {
-      const want = !!(followJid || meFollow) && !document.hidden;
+      const want = meFollow && !document.hidden;
       if (want && !wakeLock && 'wakeLock' in navigator) {
         try {
           wakeLock = await navigator.wakeLock.request('screen');
@@ -4006,7 +3985,10 @@
       const pill = $('linepill');
       removeLine('linefocus');
       if (!line) { pill.hidden = true; updateOcclusion(); return; }
-      pill.innerHTML = i18('Line ') + esc(line) + ' <span class="x" aria-hidden="true">\u2715</span>';
+      const fv = [...vehicles.values()].find(x => x.line === line);
+      pill.innerHTML = '<span class="ln" style="background:' + vehColor(kind || (fv ? fv.kind : 'tram'), line) + '">' + esc(line) + '</span><span class="x" aria-hidden="true">\u2715</span>';
+      pill.setAttribute('aria-label', i18('Line ') + line + ' · ' + i18('Show all lines'));
+      pill.title = i18('Show all lines');
       pill.hidden = false;
       updateOcclusion();
       const v = [...vehicles.values()].find(x => x.line === line);
@@ -4126,23 +4108,6 @@
       setLineFocus(lineName(prod), j.jid, kindOf(prod));
     }
     $('linepill').addEventListener('click', () => setLineFocus(null));
-    function setFollowVehicle(jid) {
-      followJid = jid;
-      if (jid) { meFollow = false; $('fablocate').setAttribute('aria-pressed', 'false'); }
-      document.querySelectorAll('.followbtn').forEach(bn =>
-        bn.setAttribute('aria-pressed', String(!!jid && bn.dataset.jid === jid)));
-      // the card's follow button disappears with the card — this pill is the
-      // always-visible state + exit
-      const pill = $('followpill');
-      if (jid) {
-        const fv = vehicles.get(jid);
-        pill.innerHTML = i18('Following ') + esc(fv ? fv.line : '') +
-          ' <span class="x" aria-hidden="true">✕</span>';
-        pill.hidden = false;
-      } else pill.hidden = true;
-      syncWakeLock();
-    }
-    $('followpill').addEventListener('click', () => setFollowVehicle(null));
 
     function applyFilter() {
       let shown = 0;
@@ -4587,14 +4552,16 @@
         // remaining stops with times, straight from the live journey
         const locL = (res.common && res.common.locL) || [];
         const stops = (res.journey && res.journey.stopL) || [];
-        const nowHM = new Date().toTimeString().slice(0, 5);
+        const nowS = secNow();
         const upcoming = stops
           .map(st => ({
             name: locL[st.locX] ? shortStop(locL[st.locX].name) : '',
+            raw: st.aTimeR || st.aTimeS || st.dTimeR || st.dTimeS,
             t: hafasTime(st.aTimeR || st.aTimeS || st.dTimeR || st.dTimeS),
             rt: !!(st.aTimeR || st.dTimeR)
           }))
-          .filter(x => x.name && x.t && x.t >= nowHM).slice(0, 5);
+          // upcoming = not more than 30 s behind now, midnight-safe (relSec2)
+          .filter(x => x.name && x.raw && relSec2(x.raw, nowS) >= -30).slice(0, 5);
         if (upcoming.length) {
           const ul = document.createElement('div');
           ul.className = 'stops';
@@ -4640,12 +4607,6 @@
         d.className = 'dirn'; d.textContent = 'Richtung ' + dirTxt;
         box.appendChild(d);
       }
-      const fb = document.createElement('button');
-      fb.className = 'followbtn'; fb.dataset.jid = v.jid;
-      fb.setAttribute('aria-pressed', String(followJid === v.jid));
-      fb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px"><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/><path d="M12 3v3.5M12 17.5V21M3 12h3.5M17.5 12H21"/></svg> Follow';
-      fb.addEventListener('click', () => setFollowVehicle(followJid === v.jid ? null : v.jid));
-      ihead.appendChild(fb);
       // status row: punctuality chip + next stop, under a divider
       const status = document.createElement('div');
       status.className = 'status';
@@ -5530,7 +5491,7 @@
       meFollow = on;
       $('fablocate').setAttribute('aria-pressed', String(on));
       $('fablocate').classList.toggle('busy', on && !meMarker);   // pulse until the first fix
-      if (on) { followJid = null; $('followpill').hidden = true; meStartWatch(); }
+      if (on) meStartWatch();
       syncWakeLock();
     }
     $('fablocate').addEventListener('click', () => {
