@@ -9,7 +9,20 @@ for the code layout; the essentials are repeated here.
   seconds (GitHub webhook → `tools/deploy.js` on the server). Work on a branch,
   push it, open a PR. The owner's account can bypass branch protection, so this
   rule is the only guard against an accidental deploy.
-- Branch names: `feat/…`, `fix/…`, `perf/…`.
+- **Merge your own PR yourself once CI is green; don't ask first** (the
+  owner's standing rule, 2026-10-18). Wait for the `test` check, then
+  `gh pr merge <n> --squash --admin --delete-branch`. In cloud sessions
+  `gh pr` is blocked; use
+  `gh api -X PUT repos/EpicHammer/bimradar/pulls/<n>/merge -f merge_method=squash`.
+  Then confirm it's live: `curl -s https://bimradar.at/sw.js | grep bimradar-`
+  shows the merge commit's short sha. Tell the owner what went live, with the
+  PR link.
+  - Never merge a red PR: fix it on the branch first.
+  - PRs from other contributors are merged only when the owner says so.
+  - Admin bypass needs the owner's GitHub login (local `gh`, or `/web-setup`
+    in the cloud). As the Claude GitHub App the merge is blocked by the
+    required review; then leave the PR for the owner.
+- Branch names: `feat/…`, `fix/…`, `perf/…`, `docs/…`.
 - One topic per PR. The app is one ~5.6k-line `index.html`; two large PRs
   against it will conflict.
 - Commit only the paths you changed (`git add <path>`, never `git add -A`).
