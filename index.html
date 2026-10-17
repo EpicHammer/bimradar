@@ -4314,11 +4314,24 @@
     // used only if already granted (or the user taps the ask button) — the
     // app never opens with a permission dialog.
     const NEAR = { t: 0, busy: false };
+    // On a phone the list is opt-in per visit: a fresh start shows the button,
+    // a tap shows departures until the tab/app is closed (sessionStorage
+    // survives reloads, not a new start). Desktop keeps loading it right away.
+    let nearWanted = false;
+    try { nearWanted = sessionStorage.getItem('bm_near') === '1'; } catch (e) {}
+    function wantNearby() { nearWanted = true; try { sessionStorage.setItem('bm_near', '1'); } catch (e) {} }
     async function refreshNearby(force) {
       const row = $('nearrow');
       if (NEAR.busy || document.hidden || !map) return;
       if (document.body.classList.contains('panel-peek') ||
           document.body.classList.contains('card-mode')) return;
+      if (MOBILE_MQ.matches && !nearWanted) {
+        let state = 'prompt';
+        try { state = (await navigator.permissions.query({ name: 'geolocation' })).state; } catch (e) {}
+        if (state === 'denied') { row.hidden = true; return; }
+        if (!row.querySelector('.nearask')) renderNearbyAsk();
+        return;
+      }
       if (!force && Date.now() - NEAR.t < 60000) return;
       let pos = meMarker ? meMarker.getPosition() : null;
       if (!pos) {
@@ -4403,6 +4416,7 @@
         i18(' Show departures near me');
       b.addEventListener('click', () => {
         if (!navigator.geolocation) return;
+        wantNearby();
         b.disabled = true;
         navigator.geolocation.getCurrentPosition(p => {
           meDot({ lat: p.coords.latitude, lng: p.coords.longitude });
