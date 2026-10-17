@@ -46,6 +46,13 @@ for (const [label, code] of [['index.html inline script', script], ['sw.js', fs.
     'carto_hide.json: restore polygons carry heights');
 }
 
+// ---- 0c. "my line": ?line= links and the remembered focus only accept line names ----
+{
+  const { normLine } = box(script, ['normLine']);
+  ok(normLine('5') === '5' && normLine(' 31e ') === '31E' && normLine('n9') === 'N9' && normLine('SV530') === 'SV530', 'normLine: real line names');
+  ok(normLine('') === null && normLine(null) === null && normLine('5<img>') === null && normLine('123456789') === null, 'normLine: junk is refused');
+}
+
 // ---- 1. HAFAS time helpers ----
 const T = box(script, ['hafasTime', 'hafasMins', 'delayOf', 'hafasSec', 'relSec2']);
 ok(T.hafasTime('153000') === '15:30', 'hafasTime HHMMSS');
@@ -192,7 +199,7 @@ async function pushTests() {
     'let __view = null, __drawn = [], followJid = null;\n' +
     'const feed = { proxy: null, outer: null }, vehicles = new Map();\n' +
     'const map = { getBounds: () => __view && { getSouthWest: () => ({ lng: __view[0], lat: __view[1] }), getNorthEast: () => ({ lng: __view[2], lat: __view[3] }) } };\n' +
-    'const ingest = parts => { __drawn = parts; };\n' +
+    'const ingest = parts => { __drawn = parts; }, retryLineRoute = () => {};\n' +
     ['PROXY_RECT', 'PROXY_MAX_AGE', 'VIEW_PAD', 'proxyHolds', 'inProxyRect', 'freshFeed', 'feedCovers', 'showFeed'].map(n => lift(script, n)).join('\n') +
     '\nthis.run = (view, proxy, outer) => { __view = view; feed.proxy = proxy; feed.outer = outer; __drawn = null; showFeed();' +
     ' return { covers: feedCovers(), parts: __drawn && __drawn.map(p => ({ stamp: p.stamp, jids: p.res.jnyL.map(j => j.jid) })) }; };' +
