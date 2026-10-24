@@ -93,8 +93,10 @@ node tools/feed_poller.js     # writes api/vehicles.json every 5 s
 ```
 
 — point it at a directory your web server serves as `/api/`, or skip it entirely
-(the client falls back to direct HAFAS queries, just a little slower). The PWA
-icons and launch screens are rendered from one artwork with
+(the client falls back to direct HAFAS queries, just a little slower).
+Visitor numbers come from the nginx log, without cookies or tracking code:
+`node tools/stats.js` (nightly: `--write` into `/var/apps/_stats/bimradar.json`,
+totals only). The PWA icons and launch screens are rendered from one artwork with
 `node tools/make_icons.js tools/icon-art.webp icons` (headless Chrome/Edge, no npm deps).
 
 ## Licence
