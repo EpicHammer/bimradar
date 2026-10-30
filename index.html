@@ -312,6 +312,7 @@
       color: var(--fg); font: 700 11px/1 system-ui, sans-serif; white-space: nowrap;
       text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg); pointer-events: none; }
     .maplibregl-ctrl-attrib { font-size: 10px; }
+    .maplibregl-ctrl-bottom-right { z-index: 99998; }   /* credits above the markers, below popups */
     .iw { background: var(--card); color: var(--fg); }
     .iw .canon, .iw b { color: var(--fg); }
     .iw .route { color: var(--ink-2); }
@@ -2879,7 +2880,10 @@
         pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
         style: isDark() ? STYLE.dark : STYLE.light,
         center: cam ? [cam.lng, cam.lat] : [GRAZ.lng, GRAZ.lat], zoom: cam ? cam.z : 13,
-        attributionControl: { compact: true },
+        // the timetable + live data come from Verbund Linie's HAFAS: credit them
+        // next to the map licence (German, like their own app)
+        attributionControl: { compact: true, customAttribution:
+          'Daten: <a href="https://www.verbundlinie.at" target="_blank" rel="noopener">Verbund Linie</a>' },
         pitch: pitched ? 45 : 0,
         dragRotate: false, pitchWithRotate: false, maxPitch: 45
       });
