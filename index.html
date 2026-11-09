@@ -298,6 +298,7 @@
     .bm-pop .maplibregl-popup-content {
       background: var(--card); color: var(--fg); font: .85rem/1.5 system-ui, sans-serif;
       border-radius: 12px; padding: 12px 14px; box-shadow: 0 8px 30px rgba(0,0,0,.4);
+      max-height: calc(100vh - 64px); overflow-y: auto;   /* a low window scrolls the popup, the title stays reachable */
     }
     .bm-pop .maplibregl-popup-tip { border-top-color: var(--card); border-bottom-color: var(--card);
       border-left-color: var(--card); border-right-color: var(--card); }
@@ -954,6 +955,22 @@
     function makeInfo() {
       const p = new maplibregl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '300px', className: 'bm-pop', offset: 16 });
       p.on('close', () => clearRoute());
+      // A popup opens small and grows when its departures or stops arrive:
+      // above a point in the upper half it grew off the top of the screen,
+      // title and buttons first. Pan the map so the whole popup shows (what
+      // Google's InfoWindow did by itself), clear of the side panel, until the
+      // user moves the map: then it is theirs to place.
+      let userMoved = false;
+      map.on('movestart', e => { if (e.originalEvent) userMoved = true; });
+      const fit = () => {
+        const el = p.getElement();
+        if (!el || !p.isOpen() || userMoved) return;
+        if (map.isMoving()) { map.once('moveend', fit); return; }
+        p.setLngLat(p.getLngLat());   // let MapLibre pick the side again for the new size
+        const d = popupShift(el.getBoundingClientRect(), mapClearRect());
+        if (d.x || d.y) map.panBy([d.x, d.y], { duration: REDUCED ? 0 : 260 });
+      };
+      const ro = window.ResizeObserver ? new ResizeObserver(() => requestAnimationFrame(fit)) : null;
       return {
         setContent(node) { p.setDOMContent(node); },
         open(o) {
@@ -961,9 +978,27 @@
           if (!pos) return;
           p.setLngLat([pos.lng, pos.lat]);
           if (!p.isOpen()) p.addTo(map);
+          userMoved = false;
+          if (ro) { ro.disconnect(); ro.observe(p.getElement()); }
         },
-        close() { if (p.isOpen()) p.remove(); }
+        close() { if (p.isOpen()) p.remove(); if (ro) ro.disconnect(); }
       };
+    }
+    // the part of the window a popup may use: not under the side panel
+    function mapClearRect() {
+      const pad = 12, panel = document.querySelector('main').getBoundingClientRect();
+      const covered = !MOBILE_MQ.matches && !document.body.classList.contains('panel-hidden');
+      return { left: (covered ? panel.right : 0) + pad, top: pad, right: window.innerWidth - pad, bottom: window.innerHeight - pad };
+    }
+    // how far to pan (px, map.panBy's sense) so rect r lies inside the box; a
+    // popup larger than the box keeps its top-left corner, where its title is
+    function popupShift(r, box) {
+      let x = 0, y = 0;
+      if (r.left < box.left || r.right - r.left > box.right - box.left) x = r.left - box.left;
+      else if (r.right > box.right) x = r.right - box.right;
+      if (r.top < box.top || r.bottom - r.top > box.bottom - box.top) y = r.top - box.top;
+      else if (r.bottom > box.bottom) y = r.bottom - box.bottom;
+      return { x: Math.round(x), y: Math.round(y) };
     }
 
     // On phones a tapped thing takes over the SHEET (native pattern); the
