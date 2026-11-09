@@ -248,6 +248,33 @@ async function pushTests() {
   ok(a.t0 !== 1 && a.stamp === 'p2' && a.to.lng === 15.411, 'ingest: the first part to report a journey wins');
   ok(ctx.vehicles.size === 2 && ctx.vehicles.has('d') && !ctx.vehicles.has('b'), 'ingest: vehicles no part reports are removed');
 }
+{
+  // phone: closing a card puts the sheet back where it was. 'half' is the
+  // card's own state, the trip form must never be left in it
+  const ctx = vm.createContext({ Math });
+  vm.runInContext(
+    'const cls = new Set(); let state = "peek";\n' +
+    'const document = { body: { classList: { add: c => cls.add(c), remove: c => cls.delete(c), contains: c => cls.has(c) } },\n' +
+    '  activeElement: null, getElementById: () => ({ replaceChildren() {} }), contains: () => false };\n' +
+    'const MOBILE_MQ = { matches: true }, info = { close() {} }, map = null, REDUCED = true, window = { innerHeight: 800 };\n' +
+    'const $ = () => ({ focus() {} }), clearRoute = () => {}, sheetState = () => state, setSheet = s => { state = s; };\n' +
+    'let cardReturnFocus = null, cardPrevSheet = null;\n' +
+    ['presentCard', 'closeCard', 'cardSheetAfter'].map(n => lift(script, n)).join('\n') +
+    '\nthis.__x = { presentCard, closeCard, state: () => state, set: s => { state = s; }, card: () => cls.has("card-mode"), MOBILE_MQ };', ctx);
+  const c = ctx.__x;
+  c.presentCard({}, null);
+  ok(c.state() === 'half' && c.card(), 'card: opens in the half sheet');
+  c.closeCard();
+  ok(c.state() === 'peek' && !c.card(), 'card: "Map" from a map tap goes back to the stub');
+  c.set('full'); c.presentCard({}, null); c.presentCard({}, null); c.closeCard();
+  ok(c.state() === 'full', 'card: opened from the open sheet (even via a second card), "Map" returns to it');
+  c.set('peek'); c.presentCard({}, null); c.set('full'); c.closeCard();
+  ok(c.state() === 'peek', 'card: dragged to full height still closes to where it came from');
+  c.presentCard({}, null); c.closeCard('full');
+  ok(c.state() === 'full', 'card: a caller can name the state to land in');
+  c.set('peek'); c.closeCard();
+  ok(c.state() === 'peek', 'card: closing with no card open changes nothing');
+}
 
 pushTests().catch(e => ok(false, 'push tests threw: ' + e.message)).then(() => {
   console.log((failed ? 'FAILED ' : 'ok ') + passed + ' passed, ' + failed + ' failed');
