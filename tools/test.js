@@ -78,6 +78,11 @@ ok(T.relSec2('200000', 7 * 3600) === 13 * 3600, 'relSec2 keeps a departure 13 h 
   const out = S.mergeSugg([ad, st], [sq, sq, b1, b2]);
   ok(out.filter(x => /jakomini/i.test(x.name)).length === 1 && out[0].isStop, 'suggestions: one Jakominiplatz row, the stop');
   ok(out.filter(x => x.name === 'Billa').length === 2, 'suggestions: same-name shops at different addresses stay');
+  const shop = { name: 'Schullin', sub: 'Herrengasse 3, Graz', isStop: false, lat: 47.0707, lon: 15.4395 };
+  const addr = { name: 'Herrengasse 3, 8010 Graz', sub: '', isStop: false, isAddr: true, lid: 'A', lat: 47.0712, lon: 15.4391 };
+  ok(S.mergeSugg([addr], [shop], 'Herrengasse 3')[0] === undefined || S.mergeSugg([addr], [shop], 'Herrengasse 3')[0].name === addr.name,
+    'suggestions: with a house number typed, the address leads the shops at it');
+  ok(S.mergeSugg([addr], [shop], 'Herrengasse')[0].name === 'Schullin', 'suggestions: without a number, distance decides as before');
 }
 
 // ---- 2. the timetable motion model ----
@@ -286,6 +291,25 @@ async function pushTests() {
   ok(sh(600, 500, 300, 400).y === 112, 'popup: off the bottom, the map pans up');
   ok(sh(300, 100, 300, 400).x === -52 && sh(1100, 100, 300, 400).x === 132, 'popup: clear of the side panel and the right edge');
   ok(sh(600, 100, 300, 900).y === 88, 'popup: taller than the window keeps its title in view');
+}
+{
+  // search: district names and house numbers are asked again as "Graz ...",
+  // and only real city hits come back from that fuzzy answer
+  const S = box(script, ['GRAZ', 'CITY_KM', 'kmFromGraz', 'searchWords', 'wantsCityRetry', 'cityHits', 'sameName']);
+  const hit = (name, km, isStop) => ({ name, isStop: !!isStop, lat: 47.0707 + km / 111.32, lon: 15.4395 });
+  const names = l => l.map(x => x.name).join('|');
+  ok(S.wantsCityRetry('St. Peter', [hit('ST.PETER IM SULMTAL', 38, 1), hit('St. Peter in der Au', 124, 1)]), 'search: nothing in the city, ask again as "Graz ..."');
+  ok(!S.wantsCityRetry('Andritz', [hit('Graz Andritz', 4, 1), hit('Graz Maut Andritz', 3, 1), hit('Graz Oberandritz', 5, 1)]), 'search: enough in the city, no second request');
+  ok(!S.wantsCityRetry('Graz St. Peter', []) && !S.wantsCityRetry('St', []), 'search: no retry for "Graz ..." itself or two letters');
+  ok(names(S.cityHits('St. Peter', [hit('Graz St.Peter Friedhof', 2, 1), hit('Graz Schulzentrum St.Peter', 2, 1),
+    hit('Kirche St. Peter, Graz (Sehenswürdigkeit)', 3), hit('St.Peter im Sulmtal Bahnhof', 37, 1)])) ===
+    'Graz St.Peter Friedhof|Graz Schulzentrum St.Peter|Kirche St. Peter, Graz (Sehenswürdigkeit)', 'search: "St. Peter" finds the Graz stops, not the Sulmtal');
+  ok(names(S.cityHits('Sankt Pet', [hit('Graz St.Peter', 3, 1), hit('Sankt Peter Hauptstraße, 8042 Graz', 3)])) === 'Graz St.Peter', 'search: a stop may complete the last word, an address may not');
+  ok(names(S.cityHits('Herrengasse 3', [hit('Herrengasse 3, 8010 Graz', 0), hit('Herrengasse 30, 8010 Graz', 0), hit('Herrengasse 3, 1010 Wien', 144)])) ===
+    'Herrengasse 3, 8010 Graz', 'search: a house number matches whole, and only in Graz');
+  ok(names(S.cityHits('Weiz', [hit('Graz Griesplatz/Zweiglgasse/tim', 1, 1), hit('Graz Weinzödlbrücke', 5, 1)])) === '', 'search: fuzzy "Graz Weiz" answers are dropped');
+  ok(S.sameName('Zentralfriedhof, Graz (Friedhof)') === S.sameName('Graz Zentralfriedhof') &&
+    S.sameName('Jakominiplatz, 8010 Graz') === 'jakominiplatz', 'search: POI and stop of one name count as one place');
 }
 pushTests().catch(e => ok(false, 'push tests threw: ' + e.message)).then(() => {
   console.log((failed ? 'FAILED ' : 'ok ') + passed + ' passed, ' + failed + ' failed');
