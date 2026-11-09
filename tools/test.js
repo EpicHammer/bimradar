@@ -333,6 +333,26 @@ async function pushTests() {
   ok([...Object.values(L.POI_LABEL), ...Object.values(L.KIND_LABEL), 'Shop', 'Place', 'Address'].every(w => L.DE[w] != null || same.includes(w)),
     'labels: every English label has its German');
 }
+{
+  // every landmark story (and each building's own blurb) has its German text
+  const a = script.indexOf("name: 'Uhrturm', info:"), b = script.indexOf('// Draw-call diet for phones', a);
+  const stories = [...script.slice(a, b).matchAll(/\b(?:info|i): ("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g)].map(m => vm.runInNewContext(m[1]));
+  const assign = script.slice(script.indexOf('Object.assign(DE, {'), script.indexOf('\n    });', script.indexOf('Object.assign(DE, {')) + 8);
+  const ctx = vm.createContext({ String, Object });
+  vm.runInContext('let LANG = "de";\n' + lift(script, 'DE') + '\n' + assign + '\n' + lift(script, 'i18') + '\n' + lift(script, 'storyText') +
+    '\nthis.__x = { storyText, i18, DE, lang: l => { LANG = l; } };', ctx);
+  const X = ctx.__x, missing = stories.filter(s => X.storyText(s) === s);
+  ok(a > 0 && b > a && stories.length > 80, 'landmarks: the story list is found (' + stories.length + ')');
+  ok(missing.length === 0, 'landmarks: every story has a German text' + (missing.length ? ' — missing: ' + missing.map(s => s.slice(0, 40)).join(' | ') : ''));
+  ok(X.storyText('HNO of the LKH-Universitätsklinikum Graz.') === 'HNO des LKH-Universitätsklinikums Graz.', 'landmarks: the LKH buildings share one German sentence');
+  ok(['West Wing', 'Head Office', 'Chemistry Institutes', 'Parking Garage', 'Headquarters'].every(n => X.DE[n]) && X.i18('Burgtor') === 'Burgtor',
+    'landmarks: English building names have a German one, German ones stay');
+  const nums = s => (s.match(/\d+(?:[.,]\d+)?/g) || []).map(n => n.replace(/[.,]/g, '')).sort().join(' ');
+  const off = stories.filter(s => X.DE[s] && nums(s) !== nums(X.DE[s]));
+  ok(off.length === 0, 'landmarks: German and English carry the same figures' + (off.length ? ' — differ: ' + off.map(s => s.slice(0, 40)).join(' | ') : ''));
+  X.lang('en');
+  ok(X.storyText(stories[0]) === stories[0], 'landmarks: English stays English');
+}
 pushTests().catch(e => ok(false, 'push tests threw: ' + e.message)).then(() => {
   console.log((failed ? 'FAILED ' : 'ok ') + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);

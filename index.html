@@ -695,7 +695,7 @@
     const $ = id => document.getElementById(id);
     // ---------- language: German on German phones, switchable, remembered ----------
     // Keys are the English strings themselves, so untranslated text degrades to
-    // English instead of to a blank. Landmark stories stay English for now.
+    // English instead of to a blank.
     let LANG = 'en';
     try { LANG = localStorage.getItem('bm_lang') || ((navigator.language || 'en').toLowerCase().startsWith('de') ? 'de' : 'en'); } catch (e) {}
     const DE = {
@@ -781,7 +781,187 @@
       "Map background unavailable — vehicles still update":"Kartenhintergrund nicht verfügbar — Fahrzeuge werden weiter aktualisiert",
       "no answer":"keine Antwort"
     };
+    // Landmark stories and building names in German, keyed like everything else
+    // by the English text in the landmark list (tools/test.js fails if one is
+    // missing). Facts and figures are the English ones, nothing added.
+    Object.assign(DE, {
+      "Graz's landmark (28 m, 13th century). The 1712 clock has 'swapped' hands - the big one shows the hours. In 1809 the citizens paid Napoleon's troops 2,987 guilders to spare it from demolition.":
+        "Das Wahrzeichen von Graz (28 m, 13. Jahrhundert). Die Uhr von 1712 hat „vertauschte“ Zeiger – der große zeigt die Stunden. 1809 zahlten die Bürger Napoleons Truppen 2.987 Gulden, um den Turm vor dem Abriss zu bewahren.",
+      "Octagonal bell tower on the Schlossberg (1588, 34 m). Its bell 'Liesl' (4.6 t) is the third-largest in Styria.":
+        "Achteckiger Glockenturm auf dem Schloßberg (1588, 34 m). Seine Glocke „Liesl“ (4,6 t) ist die drittgrößte der Steiermark.",
+      "Floating steel island by Vito Acconci, built for Graz's year as European Capital of Culture 2003. Cafe under the glass dome, an amphitheatre, and footbridges to both banks.":
+        "Schwimmende Stahlinsel von Vito Acconci, gebaut für das Kulturhauptstadtjahr 2003. Café unter der Glaskuppel, ein Amphitheater und Stege zu beiden Ufern.",
+      "Neo-Gothic by Georg Hauberrisser (1881-1887). At 109.6 m the tallest church tower in Styria and the third-tallest in Austria.":
+        "Neugotik von Georg Hauberrisser (1881–1887). Mit 109,6 m der höchste Kirchturm der Steiermark und der dritthöchste Österreichs.",
+      "Museum of contemporary art by Peter Cook & Colin Fournier (2003), with the BIX media facade. Next door: the Eisernes Haus (1848), continental Europe's oldest cast-iron building.":
+        "Museum für zeitgenössische Kunst von Peter Cook & Colin Fournier (2003), mit der BIX-Medienfassade. Gleich daneben: das Eiserne Haus (1848), der älteste Gusseisenbau Kontinentaleuropas.",
+      "Continental Europe's oldest cast-iron building (1848), now housing part of the Kunsthaus.":
+        "Der älteste Gusseisenbau Kontinentaleuropas (1848), er beherbergt heute einen Teil des Kunsthauses.",
+      "Tomb of Emperor Ferdinand II with St Catherine's Church (from 1614, Pietro de Pomis) - Mannerism, part of the Graz 'city crown'.":
+        "Grabstätte Kaiser Ferdinands II. mit der Katharinenkirche (ab 1614, Pietro de Pomis) – Manierismus, Teil der Grazer „Stadtkrone“.",
+      "Graz City Hall on Hauptplatz (1887-1893, historicist style). Seat of the mayor and the city council.":
+        "Das Grazer Rathaus am Hauptplatz (1887–1893, Historismus). Sitz des Bürgermeisteramts und des Gemeinderats.",
+      "Pilgrimage church of the Minorite friars in Lend. Facade by Pietro de Pomis (1607-1611); the twin towers were added 1742-44.":
+        "Wallfahrtskirche der Minoriten im Lend. Fassade von Pietro de Pomis (1607–1611); die Doppeltürme kamen 1742–44 dazu.",
+      "St Giles' Cathedral (from 1438 under Emperor Frederick III, late Gothic) with a Baroque spire. The bishop's church, part of the city crown.":
+        "Dom zum heiligen Ägydius (ab 1438 unter Kaiser Friedrich III., Spätgotik) mit barockem Turmhelm. Die Bischofskirche, Teil der Stadtkrone.",
+      "Friary founded in 1239 - one of the oldest buildings in the city, right by the Mur. The landmark tower dates from 1636.":
+        "1239 gegründetes Kloster – eines der ältesten Bauwerke der Stadt, direkt an der Mur. Der markante Turm stammt von 1636.",
+      "Neo-Baroque opera house by Fellner & Helmer (1899), built in just two years. With ~1,200 seats Austria's second-largest opera house.":
+        "Neubarockes Opernhaus von Fellner & Helmer (1899), in nur zwei Jahren erbaut. Mit rund 1.200 Plätzen das zweitgrößte Opernhaus Österreichs.",
+      "City parish church of the Holy Blood on Herrengasse (15th century); 56 m tower with a Baroque double-onion cap.":
+        "Stadtpfarrkirche zum Heiligen Blut in der Herrengasse (15. Jahrhundert); 56 m hoher Turm mit barocker Doppelzwiebel.",
+      "Consecrated in 1293 - the oldest surviving building in Graz. Early-Gothic church of the Teutonic Order, on the university campus.":
+        "1293 geweiht – das älteste erhaltene Bauwerk von Graz. Frühgotische Kirche des Deutschen Ordens, am Universitätscampus.",
+      "Residence of Emperor Frederick III (from 1438), today the seat of the Styrian state government. Famous for its Gothic double-spiral staircase (1499). With the Burgtor gate to the Stadtpark.":
+        "Residenz Kaiser Friedrichs III. (ab 1438), heute Sitz der Steiermärkischen Landesregierung. Berühmt für die gotische Doppelwendeltreppe (1499). Mit dem Burgtor zum Stadtpark.",
+      "West Wing":
+        "Westtrakt",
+      "The western wing of the Burg complex, toward the Hofgasse.":
+        "Der westliche Trakt der Burganlage, zur Hofgasse hin.",
+      "The castle gate - the historic passage between the old town and the Stadtpark ring.":
+        "Das Burgtor – der historische Durchgang zwischen der Altstadt und dem Ring am Stadtpark.",
+      "The city's main station: the 1950s Empfangsgebäude with Peter Kogler's blue 'orbit' swirls inside the hall, the Golden Eye ring over the bus loop, and since the 2012 rebuild the tram and bus hub in a tunnel under Europaplatz. Every S-Bahn line and half the tram network meet here.":
+        "Der Hauptbahnhof der Stadt: das Empfangsgebäude aus den 1950er-Jahren mit Peter Koglers blauen „Orbit“-Schleifen in der Halle, der Ring des Golden Eye über der Busschleife und seit dem Umbau 2012 der Knoten für Straßenbahn und Bus im Tunnel unter dem Europaplatz. Hier treffen sich alle S-Bahn-Linien und das halbe Straßenbahnnetz.",
+      "The 14 m entrance hall of 1956 - a listed piece of post-war modernism. Since 2003 Peter Kogler's looping blue 'orbit' covers its walls and ceiling; the glazed front looks onto Europaplatz.":
+        "Die 14 m hohe Empfangshalle von 1956 – ein denkmalgeschütztes Stück Nachkriegsmoderne. Seit 2003 überzieht Peter Koglers blau verschlungener „Orbit“ Wände und Decke; die Glasfront blickt auf den Europaplatz.",
+      "The golden ring canopy over the Europaplatz bus loop - the signature of the 2012 forecourt rebuild, 7 m up on slim columns, with the teardrop opening over the loop and a glass skylight over bays D and F. Trams and the A/B bus bays run underneath in the tunnel hub.":
+        "Das goldene Ringdach über der Busschleife am Europaplatz – das Markenzeichen des Vorplatz-Umbaus von 2012, 7 m hoch auf schlanken Stützen, mit der tropfenförmigen Öffnung über der Schleife und einem Glasoberlicht über den Steigen D und F. Straßenbahnen und die Bussteige A/B liegen darunter im Tunnel.",
+      "The island platforms with their long canopies - all reached through the pedestrian underpass, whose escalators come up under the wide middle roof.":
+        "Die Inselbahnsteige mit ihren langen Dächern – alle über die Personenunterführung erreichbar, deren Rolltreppen unter dem breiten Mitteldach heraufkommen.",
+      "The Hausbahnsteig directly behind the station building, under a 440 m canopy strip.":
+        "Der Hausbahnsteig direkt hinter dem Bahnhofsgebäude, unter einem 440 m langen Dach.",
+      "Late-Baroque pilgrimage basilica (1714-1779) on the Purberg, reached by 216 steps - or by tram 1, which ends at its foot. The twin towers are visible across half the city.":
+        "Spätbarocke Wallfahrtsbasilika (1714–1779) auf dem Purberg, erreichbar über 216 Stufen – oder mit der Linie 1, die an ihrem Fuß endet. Die Doppeltürme sieht man in der halben Stadt.",
+      "Seat of the Styrian parliament - Renaissance masterpiece by Domenico dell'Allio (1557-1565) with Austria's finest arcaded courtyard. Adjoining it: the Landeszeughaus, the world's largest historic armoury (~32,000 objects).":
+        "Sitz des Landtags Steiermark – Renaissance-Meisterwerk von Domenico dell'Allio (1557–1565) mit dem schönsten Arkadenhof Österreichs. Gleich daneben: das Landeszeughaus, die größte historische Waffenkammer der Welt (rund 32.000 Objekte).",
+      "Graz's football stadium in Liebenau (opened 1997, ~16,000 seats) - home ground of both Sturm Graz and GAK.":
+        "Das Grazer Fußballstadion in Liebenau (eröffnet 1997, rund 16.000 Plätze) – Heimstätte von Sturm Graz und GAK.",
+      "60 m research tower of the Smart City quarter (2017). Its 'energy glass' facade generates electricity - the landmark of the new Graz west.":
+        "60 m hoher Forschungsturm des Smart-City-Viertels (2017). Seine „Energieglas“-Fassade erzeugt Strom – das Wahrzeichen des neuen Grazer Westens.",
+      "Stately Renaissance castle with an inner courtyard and its own chapel - the old village manor that the ams OSRAM campus later grew up beside.":
+        "Stattliches Renaissanceschloss mit Innenhof und eigener Kapelle – der alte Herrensitz des Ortes, neben dem später der Campus von ams OSRAM entstand.",
+      "The castle's own chapel, with a slim roof turret.":
+        "Die Kapelle des Schlosses, mit schlankem Dachreiter.",
+      "Headquarters of ams OSRAM, the Austrian-German sensor and photonics group - born in Premstätten in 1981 as Austria Mikro Systeme, and since 2020 merged with Munich's OSRAM. The campus pairs the head office with a wafer fab where the optical sensors are made.":
+        "Zentrale von ams OSRAM, dem österreichisch-deutschen Sensor- und Photonikkonzern – 1981 in Premstätten als Austria Mikro Systeme gegründet und seit 2020 mit der Münchner OSRAM vereint. Am Campus stehen die Firmenzentrale und eine Waferfabrik, in der die optischen Sensoren entstehen.",
+      "Main Fab Hall":
+        "Fab-Haupthalle",
+      "The main production hall of the Premstätten site, wrapped around an inner courtyard.":
+        "Die Hauptfertigungshalle des Standorts Premstätten, rund um einen Innenhof gebaut.",
+      "Cleanroom Fab (North)":
+        "Reinraum-Fab (Nord)",
+      "Windowless wafer-fab block - the rooftop penthouse is the plant keeping the cleanrooms at constant air, temperature and pressure.":
+        "Fensterloser Waferfab-Block – der Aufbau am Dach ist die Anlage, die Luft, Temperatur und Druck in den Reinräumen konstant hält.",
+      "Production (South)":
+        "Fertigung (Süd)",
+      "The southern production block of the Premstätten fab.":
+        "Der südliche Fertigungsblock der Fab in Premstätten.",
+      "Head Office":
+        "Firmenzentrale",
+      "The company's head office building on the campus.":
+        "Das Gebäude der Firmenzentrale am Campus.",
+      "Technical Building":
+        "Technikgebäude",
+      "Utilities and technical services for the fab - gases, water treatment, power.":
+        "Versorgung und Haustechnik für die Fab – Gase, Wasseraufbereitung, Strom.",
+      "Multi-deck car park for the campus workforce.":
+        "Mehrstöckiges Parkhaus für die Belegschaft am Campus.",
+      "Baroque residence built from 1625 for Hans Ulrich von Eggenberg - an architectural calendar: 4 towers for the seasons, 12 gates for the months and 365 windows. UNESCO World Heritage together with the old town.":
+        "Barockes Schloss, ab 1625 für Hans Ulrich von Eggenberg erbaut – ein gebauter Kalender: 4 Türme für die Jahreszeiten, 12 Tore für die Monate und 365 Fenster. Gemeinsam mit der Altstadt UNESCO-Welterbe.",
+      "Renaissance city gate of the outer fortifications (c. 1620) at the foot of the Schlossberg.":
+        "Renaissance-Stadttor der äußeren Befestigung (um 1620) am Fuß des Schloßbergs.",
+      "Multi-purpose hall of the Graz trade fair by Klaus Kada (2002) - a vast glass hall for fairs, concerts and sport, holding up to ~14,000 guests.":
+        "Mehrzweckhalle der Messe Graz von Klaus Kada (2002) – eine riesige Glashalle für Messen, Konzerte und Sport, für bis zu rund 14.000 Gäste.",
+      "Main building of Graz University of Technology on Rechbauerstrasse (opened 1888, historicist style) - the heart of the oldest TU campus.":
+        "Hauptgebäude der Technischen Universität Graz in der Rechbauerstraße (eröffnet 1888, Historismus) – das Herz des ältesten TU-Campus.",
+      "Second main building of Graz University of Technology on Stremayrgasse (opened 1912) - home of the chemistry institutes. Together with the Alte Technik it frames the historic TU campus.":
+        "Zweites Hauptgebäude der Technischen Universität Graz in der Stremayrgasse (eröffnet 1912) – Sitz der Chemieinstitute. Zusammen mit der Alten Technik rahmt es den historischen TU-Campus.",
+      "Main Building (1912)":
+        "Hauptgebäude (1912)",
+      "The historicist second main building of the TU - opened 1912, crowned risalit toward Kopernikusgasse.":
+        "Das historistische zweite Hauptgebäude der TU – eröffnet 1912, mit bekröntem Risalit zur Kopernikusgasse.",
+      "Chemistry Institutes":
+        "Chemieinstitute",
+      "Analytical, inorganic, organic and physical chemistry under one long roof on Stremayrgasse.":
+        "Analytische, anorganische, organische und physikalische Chemie unter einem langen Dach in der Stremayrgasse.",
+      "Mathematics & Geodesy":
+        "Mathematik & Geodäsie",
+      "Institute building for mathematics and geodesy on the south-eastern corner of the campus.":
+        "Institutsgebäude für Mathematik und Geodäsie an der Südostecke des Campus.",
+      "Biochemistry":
+        "Biochemie",
+      "The biochemistry institute block on the north-east of the campus.":
+        "Der Institutsbau der Biochemie im Nordosten des Campus.",
+      "NAWI Library":
+        "NAWI-Bibliothek",
+      "Natural-sciences branch library shared by TU Graz and Uni Graz under the NAWI Graz co-operation.":
+        "Naturwissenschaftliche Fachbibliothek, gemeinsam genutzt von TU Graz und Uni Graz im Rahmen der Kooperation NAWI Graz.",
+      "Physics Institutes":
+        "Physikinstitute",
+      "The physics complex of the Neue Technik campus.":
+        "Der Physikkomplex am Campus Neue Technik.",
+      "Hydraulic Engineering":
+        "Wasserbau",
+      "Institutes for hydraulic engineering and water management, with their flow-machinery labs.":
+        "Institute für Wasserbau und Wasserwirtschaft, mit ihren Labors für Strömungsmaschinen.",
+      "Headquarters of Anton Paar, Graz's maker of precision measuring instruments - density meters, rheometers and lab analytics exported worldwide. Founded in 1922 as a one-man locksmith's workshop.":
+        "Zentrale von Anton Paar, dem Grazer Hersteller von Präzisionsmessgeräten – Dichtemessgeräte, Rheometer und Laboranalytik, exportiert in alle Welt. 1922 als Ein-Mann-Schlosserei gegründet.",
+      "Headquarters":
+        "Zentrale",
+      "The long glass headquarters bar - management, sales and the famous in-house R&D.":
+        "Der lange gläserne Riegel der Zentrale – Geschäftsführung, Vertrieb und die berühmte hauseigene Forschung und Entwicklung.",
+      "Office Building":
+        "Bürogebäude",
+      "Six-storey glass office building for the growing R&D and administration teams.":
+        "Sechsgeschossiges gläsernes Bürogebäude für die wachsenden Teams in Forschung, Entwicklung und Verwaltung.",
+      "Office Block North":
+        "Bürotrakt Nord",
+      "Three-storey office wing on the northern edge of the campus.":
+        "Dreigeschossiger Bürotrakt am Nordrand des Campus.",
+      "Parking Garage":
+        "Parkhaus",
+      "Four open parking decks for the campus workforce.":
+        "Vier offene Parkdecks für die Belegschaft am Campus.",
+      "Production Hall":
+        "Produktionshalle",
+      "The main production hall around its courtyard - where the density meters and rheometers are actually built.":
+        "Die Hauptproduktionshalle rund um ihren Innenhof – hier werden die Dichtemessgeräte und Rheometer tatsächlich gebaut.",
+      "South-East Hall":
+        "Halle Südost",
+      "Production and logistics hall on the south-eastern corner of the site.":
+        "Produktions- und Logistikhalle an der Südostecke des Geländes.",
+      "Main building of the University of Graz on Universitaetsplatz (1895, historicist style). The university itself is Austria's second-oldest, founded in 1585.":
+        "Hauptgebäude der Universität Graz am Universitätsplatz (1895, Historismus). Die Universität selbst ist die zweitälteste Österreichs, gegründet 1585.",
+      "Headquarters of the Styria media group (2015): a 67 m glass slab on Gadollaplatz, the tallest thing south of the Ring. Newsrooms of the Kleine Zeitung and Die Presse sit behind the banded glass.":
+        "Zentrale der Styria Media Group (2015): eine 67 m hohe Glasscheibe am Gadollaplatz, das höchste Bauwerk südlich des Rings. Hinter dem gebänderten Glas sitzen die Redaktionen der Kleinen Zeitung und der Presse.",
+      "The tram bridge of the old town (1965): lines 1, 3, 6 and 7 cross the Mur here between Südtiroler Platz and the Hauptplatz side.":
+        "Die Straßenbahnbrücke der Altstadt (1965): Hier queren die Linien 1, 3, 6 und 7 die Mur zwischen Südtiroler Platz und der Hauptplatz-Seite.",
+      "Rebuilt from scratch and reopened in November 2024 - the newest Mur crossing, linking the Kunsthaus side with the Joanneumsviertel.":
+        "Von Grund auf neu gebaut und im November 2024 wiedereröffnet – die jüngste Murquerung, sie verbindet die Kunsthaus-Seite mit dem Joanneumsviertel.",
+      "Road bridge at the south end of the old town, between Gries and the Radetzkystraße.":
+        "Straßenbrücke am Südende der Altstadt, zwischen Gries und der Radetzkystraße.",
+      "The northern old-town crossing at the foot of the Schlossberg, between Lend and the Kaiser-Franz-Josef-Kai; a bridge has stood here since 1836.":
+        "Die nördliche Altstadtquerung am Fuß des Schloßbergs, zwischen Lend und dem Kaiser-Franz-Josef-Kai; eine Brücke steht hier seit 1836.",
+      "Officially the Alfred-Stingl-Brücke (1977), an arch bridge by the Augarten park.":
+        "Offiziell die Alfred-Stingl-Brücke (1977), eine Bogenbrücke beim Augarten.",
+      "Austria's grand old department store (founded 1873; this Sackstraße building 1914) at the foot of the Schlossberg. Since 2010 the folded glass roofscape by Nieto Sobejano crowns it, with the Freiblick rooftop café looking straight at the Uhrturm.":
+        "Österreichs traditionsreiches Kaufhaus (gegründet 1873; dieses Haus in der Sackstraße 1914) am Fuß des Schloßbergs. Seit 2010 krönt es die gefaltete Glasdachlandschaft von Nieto Sobejano, mit dem Dachcafé Freiblick und direktem Blick auf den Uhrturm.",
+      "The southern tram bridge over the Mur between Karlau and Schönau - an arch bridge carrying line 5 toward Puntigam.":
+        "Die südliche Straßenbahnbrücke über die Mur zwischen Karlau und Schönau – eine Bogenbrücke, über die die Linie 5 Richtung Puntigam fährt.",
+      "Austria's second-largest hospital and the university clinic of the Med Uni Graz: a campus of Jugendstil pavilions (1912) around the modern Chirurgie block and its tower. The terminus of tram 7.":
+        "Österreichs zweitgrößtes Krankenhaus und das Universitätsklinikum der Med Uni Graz: ein Campus aus Jugendstil-Pavillons (1912) rund um den modernen Chirurgie-Block mit seinem Turm. Endstation der Linie 7.",
+      "Styria's big brewery, brewing on this site since 1478 (Brau Union). Tram 5 ends right at its gate - the stop is literally called Brauhaus Puntigam.":
+        "Die große Brauerei der Steiermark, an diesem Ort wird seit 1478 gebraut (Brau Union). Die Linie 5 endet direkt vor dem Tor – die Haltestelle heißt tatsächlich Brauhaus Puntigam.",
+      "Bottling and logistics hall of the brewery.":
+        "Abfüll- und Logistikhalle der Brauerei.",
+      "The brewhouse - where the Puntigamer is actually brewed; the green band marks it out on the site.":
+        "Das Sudhaus – hier wird das Puntigamer tatsächlich gebraut; das grüne Band hebt es auf dem Gelände hervor."
+    });
     const i18 = s => (LANG === 'de' && DE[s] != null) ? DE[s] : s;
+    // a landmark text: the LKH buildings share one sentence, so one rule covers them
+    const storyText = s => LANG === 'de' && DE[s] == null
+      ? s.replace(/^(.+) of the LKH-Universit\u00e4tsklinikum Graz\.$/, '$1 des LKH-Universit\u00e4tsklinikums Graz.') : i18(s);
     function applyLang() {
       document.documentElement.lang = LANG;
       $('from').placeholder = i18('From \u2014 stop, address\u2026');
@@ -4310,7 +4490,7 @@
     function openLandmark(L, part, lngLat) {
       const node = document.createElement('div');
       node.className = 'iw lmcard';
-      const title = (part && part.n) || L.name;
+      const title = i18((part && part.n) || L.name);
       const kind = document.createElement('div');
       kind.className = 'lmkind'; kind.textContent = i18('Landmark');
       const h = document.createElement('b'); h.textContent = title;
@@ -4321,7 +4501,7 @@
         node.appendChild(sub);
       }
       const story = document.createElement('div');
-      story.className = 'story'; story.textContent = (part && part.i) || L.info;
+      story.className = 'story'; story.textContent = storyText((part && part.i) || L.info);
       node.appendChild(story);
       const acts = document.createElement('div');
       acts.className = 'cardactions';
