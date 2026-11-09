@@ -276,6 +276,17 @@ async function pushTests() {
   ok(c.state() === 'peek', 'card: closing with no card open changes nothing');
 }
 
+{
+  // desktop popups are panned fully into view, clear of the side panel
+  const { popupShift } = box(script, ['popupShift']);
+  const view = { left: 352, top: 12, right: 1268, bottom: 788 };
+  const sh = (l, t, w, h) => popupShift({ left: l, top: t, right: l + w, bottom: t + h }, view);
+  ok(sh(600, 100, 300, 400).x === 0 && sh(600, 100, 300, 400).y === 0, 'popup: one that fits is left alone');
+  ok(sh(600, -130, 300, 500).y === -142 && sh(600, -130, 300, 500).x === 0, 'popup: grown off the top, the map pans down');
+  ok(sh(600, 500, 300, 400).y === 112, 'popup: off the bottom, the map pans up');
+  ok(sh(300, 100, 300, 400).x === -52 && sh(1100, 100, 300, 400).x === 132, 'popup: clear of the side panel and the right edge');
+  ok(sh(600, 100, 300, 900).y === 88, 'popup: taller than the window keeps its title in view');
+}
 pushTests().catch(e => ok(false, 'push tests threw: ' + e.message)).then(() => {
   console.log((failed ? 'FAILED ' : 'ok ') + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
