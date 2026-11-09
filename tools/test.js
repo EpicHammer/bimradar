@@ -311,6 +311,28 @@ async function pushTests() {
   ok(S.sameName('Zentralfriedhof, Graz (Friedhof)') === S.sameName('Graz Zentralfriedhof') &&
     S.sameName('Jakominiplatz, 8010 Graz') === 'jakominiplatz', 'search: POI and stop of one name count as one place');
 }
+{
+  // one language at a time: the labels on cards and suggestions follow the UI language
+  const ctx = vm.createContext({ Math, String });
+  vm.runInContext('let LANG = "en";\n' +
+    ['DE', 'i18', 'KIND_LABEL', 'GENERIC_KIND', 'kindLabel', 'delayText', 'POI_LABEL', 'poiKind'].map(n => lift(script, n)).join('\n') +
+    '\nthis.__x = { kindLabel, delayText, poiKind, DE, POI_LABEL, KIND_LABEL, lang: l => { LANG = l; } };', ctx);
+  const L = ctx.__x;
+  ok(L.kindLabel('tram', 'Straßenbahn') === 'Tram' && L.kindLabel('bus', 'Stadtbus') === 'City bus' && L.kindLabel('regio', '') === 'Regional bus',
+    'labels (en): everyday vehicle words are English');
+  ok(L.kindLabel('train', 'S-Bahn') === 'S-Bahn' && L.kindLabel('train', 'Railjet') === 'Railjet', 'labels (en): proper names stay');
+  ok(L.delayText(0) === 'on time' && L.delayText(3) === '+3 min' && L.delayText(null) === null, 'labels (en): punctuality');
+  ok(L.poiKind('amenity', 'doctors') === 'Doctor' && L.poiKind('shop', 'jewelry') === 'Shop' && L.poiKind('building', 'yes') === 'Place',
+    'labels (en): suggestion kinds are words, never raw OSM values');
+  L.lang('de');
+  ok(L.kindLabel('tram', 'Straßenbahn') === 'Straßenbahn' && L.kindLabel('night', 'Nachtbus') === 'Nachtbus' && L.kindLabel('bus', '') === 'Stadtbus',
+    'labels (de): HAFAS wording, or the German fallback');
+  ok(L.delayText(1) === 'pünktlich' && L.poiKind('amenity', 'doctors') === 'Arzt' && L.poiKind('shop', 'gift') === 'Geschäft' && L.poiKind('place', 'suburb') === 'Ort',
+    'labels (de): punctuality and suggestion kinds');
+  const same = ['Restaurant', 'Café', 'Bar', 'Kindergarten', 'Bank', 'Museum', 'Hotel', 'Schloßbergbahn'];   // the same word in both languages
+  ok([...Object.values(L.POI_LABEL), ...Object.values(L.KIND_LABEL), 'Shop', 'Place', 'Address'].every(w => L.DE[w] != null || same.includes(w)),
+    'labels: every English label has its German');
+}
 pushTests().catch(e => ok(false, 'push tests threw: ' + e.message)).then(() => {
   console.log((failed ? 'FAILED ' : 'ok ') + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
