@@ -969,11 +969,14 @@
     // On phones a tapped thing takes over the SHEET (native pattern); the
     // floating popup stays for desktop. The camera nudges so the tapped point
     // remains visible above the half-height sheet.
-    let cardReturnFocus = null;
+    let cardReturnFocus = null, cardPrevSheet = null;
     function presentCard(node, pos) {
       if (MOBILE_MQ.matches) {
         info.close();
         cardReturnFocus = document.activeElement;
+        // where "Map" goes back to: the stub (tapped on the map) or the open
+        // sheet (tapped in a list). A card opened from a card keeps the first.
+        if (!document.body.classList.contains('card-mode')) cardPrevSheet = sheetState();
         document.getElementById('cardbody').replaceChildren(node);
         document.body.classList.add('card-mode');
         setSheet('half');
@@ -985,17 +988,22 @@
         info.open({ lngLat: pos });
       }
     }
-    function closeCard() {
+    function closeCard(to) {   // to: the sheet state afterwards (default: as it was before the card)
       if (!document.body.classList.contains('card-mode')) return;
       document.body.classList.remove('card-mode');
       document.getElementById('cardbody').replaceChildren();
       clearRoute();
+      // 'half' belongs to the card: the trip form left in it sits cut off
+      // below the screen edge, with the map buttons floating mid-map
+      if (MOBILE_MQ.matches) setSheet(to || cardSheetAfter(cardPrevSheet));
+      cardPrevSheet = null;
       // restore focus, but never onto an input — that would pop the keyboard
       if (cardReturnFocus && cardReturnFocus.tagName === 'BUTTON' && document.contains(cardReturnFocus)) {
         try { cardReturnFocus.focus({ preventScroll: true }); } catch (e) {}
       }
       cardReturnFocus = null;
     }
+    function cardSheetAfter(prev) { return prev === 'full' ? 'full' : 'peek'; }
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && document.body.classList.contains('card-mode')) closeCard();
     });
@@ -2930,7 +2938,7 @@
           const lm = landmarkHit(e.point);
           if (lm) { openLandmark(lm.L, lm.part, e.lngLat); return; }
           info.close(); clearRoute();
-          if (document.body.classList.contains('card-mode')) { closeCard(); setSheet('peek'); }
+          closeCard('peek');
         });
         if (!document.hidden) {                 // a background tab starts on visibilitychange
           poll();
@@ -4205,7 +4213,7 @@
       setArmed(null);
       updateClearBtn();
       info.close();
-      closeCard();
+      closeCard('full');
       setSheet('full');
       if (!trip.from) setTimeout(() => $('from').focus(), 380);
       if (dest.lid) return;
@@ -5295,7 +5303,7 @@
       // here, so there is nothing to recentre — a delayed setCenter only
       // cancelled whatever camera move or gesture had started meanwhile)
     }
-    $('cardback').addEventListener('click', closeCard);
+    $('cardback').addEventListener('click', () => closeCard());
     $('panelhide').addEventListener('click', () => togglePanel(true));
 
     $('panelshow').addEventListener('click', () => togglePanel(false));
