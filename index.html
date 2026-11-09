@@ -768,6 +768,14 @@
       "Arrive by":"Ankunft bis",
       "From — stop, address…":"Von — Haltestelle, Adresse…",
       "Where to?":"Wohin?",
+      "towards ":"Richtung ",
+      "on time":"pünktlich",
+      "Low-floor vehicle":"Niederflurfahrzeug",
+      "Tram":"Straßenbahn", "City bus":"Stadtbus", "Regional bus":"RegioBus", "Night line":"Nachtlinie", "Train":"Zug",
+      "Address":"Adresse", "Place":"Ort", "Shop":"Geschäft",
+      "Doctor":"Arzt", "Dentist":"Zahnarzt", "Pharmacy":"Apotheke", "Hospital":"Klinik", "Clinic":"Klinik", "Vet":"Tierarzt",
+      "Fast food":"Imbiss", "Supermarket":"Supermarkt", "School":"Schule", "University":"Uni", "Post office":"Post",
+      "Cinema":"Kino", "Theatre":"Theater", "Sports":"Sport", "Pool":"Bad", "Town hall":"Amt", "Church":"Kirche",
       "Map":"Karte",
       "Deutsch":"English",
       "Map background unavailable — vehicles still update":"Kartenhintergrund nicht verfügbar — Fahrzeuge werden weiter aktualisiert",
@@ -863,7 +871,15 @@
       regio: () => cssv('--regio'), night: () => cssv('--night'),
       train: () => cssv('--train'), cable: () => cssv('--cable')
     };
-    const KIND_LABEL = { tram: 'Stra\u00dfenbahn', bus: 'Stadtbus', regio: 'RegioBus', night: 'Nachtlinie', train: 'Zug', cable: 'Schlo\u00dfbergbahn' };
+    const KIND_LABEL = { tram: 'Tram', bus: 'City bus', regio: 'Regional bus', night: 'Night line', train: 'Train', cable: 'Schlo\u00dfbergbahn' };
+    // What a card calls the vehicle. German keeps HAFAS's own word (S-Bahn,
+    // Railjet, Nachtbus); English translates the everyday ones and leaves the
+    // proper names alone.
+    const GENERIC_KIND = /^(stra(\u00df|ss)enbahn|stadtbus|regio(nal)?bus|nacht(bus|linie)|bus|zug)$/i;
+    function kindLabel(kind, kindName) {
+      if (LANG === 'de') return kindName || i18(KIND_LABEL[kind] || '');
+      return !kindName || GENERIC_KIND.test(kindName) ? (KIND_LABEL[kind] || kindName || '') : kindName;
+    }
     // The funicular has no filter chip of its own \u2014 it rides under the Bim toggle.
     const chipOf = k => k === 'cable' ? 'tram' : k;
     // Official Graz tram line colours, sampled from the Verbund Linie Liniennetzplan
@@ -3553,7 +3569,7 @@
     }
     function delayText(d) {
       if (d == null) return null;
-      if (d <= 1 && d >= -1) return 'p\u00fcnktlich';
+      if (d <= 1 && d >= -1) return i18('on time');
       return (d > 0 ? '+' : '') + d + ' min';
     }
 
@@ -4597,7 +4613,7 @@
           if (remL.some(r => /niederflur/i.test(r.txtN || r.txtS || '') || r.code === 'OB')) {
             const at = document.createElement('div');
             at.className = 'attr';
-            at.textContent = '\u267f Niederflurfahrzeug';
+            at.textContent = '\u267f ' + i18('Low-floor vehicle');
             extras.appendChild(at);
           }
           for (const m of ((res.common && res.common.himL) || []).slice(0, 2)) {
@@ -4648,7 +4664,7 @@
       const ln = document.createElement('span');
       ln.className = 'ln tap'; ln.style.background = vehColor(v.kind, v.line); ln.textContent = v.line;
       ln.title = i18('Show this line'); ln.addEventListener('click', e => { e.stopPropagation(); setLineFocus(v.line); });
-      head.append(ln, document.createTextNode(v.kindName || KIND_LABEL[v.kind] || ''));
+      head.append(ln, document.createTextNode(kindLabel(v.kind, v.kindName)));
       const ihead = document.createElement('div');
       ihead.className = 'ihead';
       ihead.appendChild(head);
@@ -4665,7 +4681,7 @@
       const dirTxt = v.dir || v.dest;
       if (dirTxt) {
         const d = document.createElement('div');
-        d.className = 'dirn'; d.textContent = 'Richtung ' + dirTxt;
+        d.className = 'dirn'; d.textContent = i18('towards ') + dirTxt;
         box.appendChild(d);
       }
       // status row: punctuality chip + next stop, under a divider
@@ -4818,20 +4834,26 @@
     // and CORS-open) fills that in. Results from both are merged and ranked by
     // distance from Graz.
     const POI_LABEL = {
-      doctors: 'Arzt', dentist: 'Zahnarzt', pharmacy: 'Apotheke', hospital: 'Klinik',
-      clinic: 'Klinik', veterinary: 'Tierarzt', restaurant: 'Restaurant', cafe: 'Café',
-      bar: 'Bar', fast_food: 'Imbiss', supermarket: 'Supermarkt', school: 'Schule',
-      university: 'Uni', kindergarten: 'Kindergarten', bank: 'Bank', post_office: 'Post',
-      cinema: 'Kino', theatre: 'Theater', museum: 'Museum', hotel: 'Hotel',
-      sports_centre: 'Sport', swimming_pool: 'Bad', townhall: 'Amt', place_of_worship: 'Kirche'
+      doctors: 'Doctor', dentist: 'Dentist', pharmacy: 'Pharmacy', hospital: 'Hospital',
+      clinic: 'Clinic', veterinary: 'Vet', restaurant: 'Restaurant', cafe: 'Café',
+      bar: 'Bar', fast_food: 'Fast food', supermarket: 'Supermarket', school: 'School',
+      university: 'University', kindergarten: 'Kindergarten', bank: 'Bank', post_office: 'Post office',
+      cinema: 'Cinema', theatre: 'Theatre', museum: 'Museum', hotel: 'Hotel',
+      sports_centre: 'Sports', swimming_pool: 'Pool', townhall: 'Town hall', place_of_worship: 'Church'
     };
+    // the small grey word in front of a suggestion. OSM has thousands of
+    // values ("jewelry", "locksmith", "yes"): the known ones get a word, any
+    // other shop is a shop, the rest a place
+    function poiKind(key, value) {
+      return i18(POI_LABEL[value] || (key === 'shop' ? 'Shop' : 'Place'));
+    }
     async function searchHafas(q) {
       try {
         const res = await hafas('LocMatch', { input: { field: 'S', loc: { type: 'ALL', name: q + '?' }, maxLoc: 30 } });
         return ((res.match && res.match.locL) || []).filter(l => l.lid && l.crd).map(l => ({
           name: l.name,
           sub: '',
-          kind: l.type === 'S' ? i18('Stop') : l.type === 'A' ? 'Adresse' : 'POI',
+          kind: i18(l.type === 'S' ? 'Stop' : l.type === 'A' ? 'Address' : 'Place'),
           isStop: l.type === 'S', isAddr: l.type === 'A',
           lid: l.lid,
           lat: l.crd.y / 1e6, lon: l.crd.x / 1e6
@@ -4853,9 +4875,7 @@
           .map(f => {
             const p = f.properties, c = f.geometry.coordinates;
             const bits = [p.street, p.housenumber].filter(Boolean).join(' ');
-            const named = ['amenity', 'shop', 'healthcare', 'office', 'tourism', 'leisure'];
-            const kind = POI_LABEL[p.osm_value]
-              || (named.includes(p.osm_key) ? p.osm_value : 'Ort');
+            const kind = poiKind(p.osm_key, p.osm_value);
             return {
               name: p.name,
               sub: [bits, p.city || p.district].filter(Boolean).join(', '),
@@ -5250,7 +5270,7 @@
             b.textContent = line;
             txt.append(b, document.createTextNode(' ' + dn + ' → ' + an));
             const dir = sec.jny.dirTxt ? document.createElement('div') : null;
-            if (dir) { dir.className = 'walk'; dir.textContent = 'Richtung ' + sec.jny.dirTxt; txt.appendChild(dir); }
+            if (dir) { dir.className = 'walk'; dir.textContent = i18('towards ') + sec.jny.dirTxt; txt.appendChild(dir); }
           } else {
             txt.innerHTML = ICON_WALK + ' ' + esc(dn) + ' → ' + esc(an);
           }
