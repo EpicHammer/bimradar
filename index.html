@@ -4832,7 +4832,7 @@
           name: l.name,
           sub: '',
           kind: l.type === 'S' ? i18('Stop') : l.type === 'A' ? 'Adresse' : 'POI',
-          isStop: l.type === 'S',
+          isStop: l.type === 'S', isAddr: l.type === 'A',
           lid: l.lid,
           lat: l.crd.y / 1e6, lon: l.crd.x / 1e6
         }));
@@ -4873,8 +4873,33 @@
     // Photon's street lines differ); stops are kept first so they win (exact
     // routing), then HAFAS entries over Photon's.
     const sameName = s => s.toLowerCase().replace(/^graz[ ,]+/, '')
-      .replace(/,\s*\d{4}\s+[^,]*$/, '').replace(/\s+/g, ' ').trim();
-    function mergeSugg(a, b) {
+      .replace(/,\s*(\d{4}\s+)?graz\b[^,]*$/, '').replace(/,\s*\d{4}\s+[^,]*$/, '').replace(/\s+/g, ' ').trim();
+    // HAFAS ranks Austria-wide, thirty hits at a time: "St. Peter" is St. Peter
+    // im Sulmtal and St. Peter in der Au, "Herrengasse 3" every Herrengasse
+    // from Wien to Kittsee, and not one hit in Graz. When the plain query
+    // finds little in the city it is asked again with "Graz " in front; that
+    // answer is fuzzy ("Graz Weiz" matches Zweiglgasse), so only hits in the
+    // city that really carry the typed words are kept.
+    const CITY_KM = 12;
+    const searchWords = s => s.toLowerCase().replace(/ß/g, 'ss').replace(/\bsankt\b/g, 'st')
+      .replace(/^graz[ ,]+/, '').replace(/[^a-z0-9äöü]+/g, ' ').trim();
+    function wantsCityRetry(q, list) {
+      return q.length >= 3 && !/^graz\b/i.test(q) &&
+        list.filter(x => kmFromGraz(x.lat, x.lon) <= CITY_KM).length < 3;
+    }
+    function cityHits(q, list) {
+      const w = searchWords(q);
+      if (!w) return [];
+      return list.filter(x => {
+        if (kmFromGraz(x.lat, x.lon) > CITY_KM) return false;
+        const n = ' ' + searchWords(x.name) + ' ', i = n.indexOf(' ' + w);
+        if (i < 0) return false;
+        // a stop may complete the last typed word ("St. Pet" -> St.Peter); an
+        // address or POI must carry it whole ("Herrengasse 3" is not no. 30)
+        return x.isStop || n[i + 1 + w.length] === ' ';
+      });
+    }
+    function mergeSugg(a, b, q) {
       const cands = [...a, ...b]
         .map(x => ({ ...x, d: kmFromGraz(x.lat, x.lon) }))
         .filter(x => x.d <= SEARCH_RADIUS_KM)
@@ -4890,8 +4915,12 @@
         });
         if (!dup) { kept.push(x); names.push(n); }
       }
-      // stops get a 1.5 km head start: for a stop-name query the stop should lead
-      return kept.sort((x, y) => (x.d - (x.isStop ? 1.5 : 0)) - (y.d - (y.isStop ? 1.5 : 0))).slice(0, 9);
+      // stops get a 1.5 km head start: for a stop-name query the stop should lead.
+      // So does the address itself once a house number is typed, ahead of the
+      // shops that happen to sit at it.
+      const num = /\d/.test(q || '');
+      const rank = x => x.d - (x.isStop || (num && x.isAddr) ? 1.5 : 0);
+      return kept.sort((x, y) => rank(x) - rank(y)).slice(0, 9);
     }
     function searchLoc(q, box, which) {
       const seq = ++suggSeq[which];
@@ -4902,10 +4931,18 @@
       let a = null, b = null;
       const draw = () => {
         if (seq !== suggSeq[which] || document.activeElement !== $(which)) return;
-        const list = mergeSugg(a || [], b || []);
+        const list = mergeSugg(a || [], b || [], q);
         if (list.length || (a !== null && b !== null)) renderSuggestions(which, list, box);
       };
-      searchHafas(q).then(r => { a = r; draw(); });
+      searchHafas(q).then(r => {
+        a = r; draw();
+        if (!wantsCityRetry(q, r)) return;
+        // (only once the typing has paused: one extra request per query, not per key)
+        setTimeout(() => {
+          if (seq !== suggSeq[which]) return;
+          searchHafas('Graz ' + q).then(r2 => { a = a.concat(cityHits(q, r2)); draw(); });
+        }, 200);
+      });
       searchPhoton(q).then(r => { b = r; draw(); });
     }
     function renderSuggestions(which, near, box) {
