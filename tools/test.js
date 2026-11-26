@@ -334,6 +334,16 @@ async function pushTests() {
     'labels: every English label has its German');
 }
 {
+  // static markup: every data-i18 text (legal notice included) has its German
+  const { DE } = box(script, ['DE']);
+  const keys = [...html.matchAll(/data-i18="([^"]+)"/g)].map(m => m[1]);
+  const missing = keys.filter(k => DE[k] == null);
+  ok(keys.length >= 5 && missing.length === 0, 'markup: every data-i18 text has a German entry' + (missing.length ? ' — missing: ' + missing.map(s => s.slice(0, 40)).join(' | ') : ''));
+  ok(/id="aboutbtn"[^>]*data-i18="Legal notice"/.test(html) && DE['Legal notice'] === 'Impressum' &&
+    /Medieninhaber und Herausgeber: Elias Hammer, Graz/.test(DE['BimRadar is a private, non-commercial project by Elias Hammer, Graz.']),
+    'legal notice: the link is there and names who runs the site');
+}
+{
   // every landmark story (and each building's own blurb) has its German text
   const a = script.indexOf("name: 'Uhrturm', info:"), b = script.indexOf('// Draw-call diet for phones', a);
   const stories = [...script.slice(a, b).matchAll(/\b(?:info|i): ("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g)].map(m => vm.runInNewContext(m[1]));
