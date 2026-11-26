@@ -483,7 +483,10 @@
     .strow .bell { width: 28px; height: 28px; margin: -.2rem 0; align-self: center; }
     .langbtn { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: .74rem;
       padding: .3rem 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
-    body.card-mode .langbtn { display: none; }
+    body.card-mode .langbtn, body.card-mode .about { display: none; }
+    .langbtn + .langbtn { margin-left: .9rem; }
+    .about { margin-top: .35rem; }
+    .about p { margin: 0 0 .5rem; }
     .strow.tap { cursor: pointer; border-radius: 8px; margin: 0 -.35rem; padding: .1rem .35rem; transition: background .12s ease; }
     .strow.tap:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
     .strow.tap::after { content: '\203A'; color: var(--muted); margin-left: .2rem; }
@@ -686,6 +689,13 @@
     <div id="results"></div>
     <p class="note" id="livetxt" aria-live="polite">connecting…</p>
     <button class="langbtn" id="langbtn" type="button">Deutsch</button>
+    <button class="langbtn" id="aboutbtn" type="button" aria-expanded="false" aria-controls="about" data-i18="Legal notice">Legal notice</button>
+    <div class="about note" id="about" hidden>
+      <p data-i18="BimRadar is a private, non-commercial project by Elias Hammer, Graz.">BimRadar is a private, non-commercial project by Elias Hammer, Graz.</p>
+      <p data-i18="Unofficial: not affiliated with Verbund Linie or Holding Graz. Timetable and live data come from Verbund Linie, the map from OpenStreetMap contributors and CARTO. All information without guarantee.">Unofficial: not affiliated with Verbund Linie or Holding Graz. Timetable and live data come from Verbund Linie, the map from OpenStreetMap contributors and CARTO. All information without guarantee.</p>
+      <p data-i18="Privacy: no cookies, no tracking, no accounts. Favourites, recent places and settings stay on this device. Your location is sent only for what you ask for: nearby departures and routes from where you are.">Privacy: no cookies, no tracking, no accounts. Favourites, recent places and settings stay on this device. Your location is sent only for what you ask for: nearby departures and routes from where you are.</p>
+      <p data-i18="The app loads departures, routes and searches from Verbund Linie, map tiles from CARTO, place search from Photon (Komoot) and walking routes from routing.openstreetmap.de; these services see your IP address. The server (Hetzner, Germany, behind Cloudflare) keeps its access log for 14 days, for troubleshooting and anonymous visit counts. A departure reminder is stored until it has been sent.">The app loads departures, routes and searches from Verbund Linie, map tiles from CARTO, place search from Photon (Komoot) and walking routes from routing.openstreetmap.de; these services see your IP address. The server (Hetzner, Germany, behind Cloudflare) keeps its access log for 14 days, for troubleshooting and anonymous visit counts. A departure reminder is stored until it has been sent.</p>
+    </div>
 
   </main>
 
@@ -778,6 +788,15 @@
       "Cinema":"Kino", "Theatre":"Theater", "Sports":"Sport", "Pool":"Bad", "Town hall":"Amt", "Church":"Kirche",
       "Map":"Karte",
       "Deutsch":"English",
+      "Legal notice":"Impressum",
+      "BimRadar is a private, non-commercial project by Elias Hammer, Graz.":
+        "BimRadar ist ein privates, nicht kommerzielles Projekt. Medieninhaber und Herausgeber: Elias Hammer, Graz.",
+      "Unofficial: not affiliated with Verbund Linie or Holding Graz. Timetable and live data come from Verbund Linie, the map from OpenStreetMap contributors and CARTO. All information without guarantee.":
+        "Inoffiziell: keine Verbindung zu Verbund Linie oder Holding Graz. Fahrplan- und Echtzeitdaten stammen von der Verbund Linie, die Karte von OpenStreetMap-Mitwirkenden und CARTO. Alle Angaben ohne Gewähr.",
+      "Privacy: no cookies, no tracking, no accounts. Favourites, recent places and settings stay on this device. Your location is sent only for what you ask for: nearby departures and routes from where you are.":
+        "Datenschutz: keine Cookies, kein Tracking, keine Konten. Favoriten, letzte Ziele und Einstellungen bleiben auf diesem Gerät. Dein Standort wird nur für das übertragen, was du anforderst: Abfahrten in der Nähe und Routen ab deinem Standort.",
+      "The app loads departures, routes and searches from Verbund Linie, map tiles from CARTO, place search from Photon (Komoot) and walking routes from routing.openstreetmap.de; these services see your IP address. The server (Hetzner, Germany, behind Cloudflare) keeps its access log for 14 days, for troubleshooting and anonymous visit counts. A departure reminder is stored until it has been sent.":
+        "Die App lädt Abfahrten, Routen und Suchergebnisse von der Verbund Linie, Kartenkacheln von CARTO, die Ortssuche von Photon (Komoot) und Fußwege von routing.openstreetmap.de; diese Dienste sehen deine IP-Adresse. Der Server (Hetzner, Deutschland, hinter Cloudflare) speichert sein Zugriffsprotokoll 14 Tage, zur Fehlersuche und für anonyme Besuchszahlen. Eine Abfahrtserinnerung wird gespeichert, bis sie verschickt ist.",
       "Map background unavailable — vehicles still update":"Kartenhintergrund nicht verfügbar — Fahrzeuge werden weiter aktualisiert",
       "no answer":"keine Antwort"
     };
@@ -5902,6 +5921,13 @@
       LANG = LANG === 'de' ? 'en' : 'de';
       try { localStorage.setItem('bm_lang', LANG); } catch (e) {}
       location.reload();                       // every built string re-renders in the new language
+    });
+    // legal notice (who runs this, privacy): a few lines under the form, on request
+    $('aboutbtn').addEventListener('click', () => {
+      const open = $('about').hidden;
+      $('about').hidden = !open;
+      $('aboutbtn').setAttribute('aria-expanded', String(open));
+      if (open) $('about').scrollIntoView({ block: 'nearest', behavior: REDUCED ? 'auto' : 'smooth' });
     });
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
