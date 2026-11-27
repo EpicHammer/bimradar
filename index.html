@@ -5604,6 +5604,10 @@
     // its own and never competes with the map's pan surface.
     const isMobile = () => MOBILE_MQ.matches;
     function setSheet(state) {              // 'full' | 'half' | 'peek'
+      // a card put away to the stub (swiped down, or its handle tapped) is
+      // closed: the stub reads "tap to plan a trip" and has to open the form,
+      // not bring the card back. closeCard() comes back here without the card.
+      if (state === 'peek' && document.body.classList.contains('card-mode')) { closeCard('peek'); return; }
       const prev = sheetState();
       if (state !== 'full') dismissKeyboard();
       document.body.classList.remove('panel-hidden');
