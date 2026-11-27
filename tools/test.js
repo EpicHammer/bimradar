@@ -282,6 +282,38 @@ async function pushTests() {
 }
 
 {
+  // phone: a card swiped down to the stub (or put away with its handle) is
+  // closed. Left open behind the stub, "tap to plan a trip" brought the
+  // card back instead of the trip form.
+  const ctx = vm.createContext({ Math, String });
+  vm.runInContext(
+    'const cls = new Set();\n' +
+    'const document = { body: { classList: { add: c => cls.add(c), remove: (...a) => a.forEach(c => cls.delete(c)), contains: c => cls.has(c),\n' +
+    '  toggle: (c, on) => { on ? cls.add(c) : cls.delete(c); } } },\n' +
+    '  activeElement: null, getElementById: () => ({ replaceChildren() {} }), contains: () => false };\n' +
+    'const MOBILE_MQ = { matches: true }, info = { close() {} }, map = null, REDUCED = true;\n' +
+    'const window = { innerHeight: 800, scrollTo() {} }, navigator = {};\n' +
+    'const $ = () => ({ focus() {}, setAttribute() {} }), clearRoute = () => {}, dismissKeyboard = () => {};\n' +
+    'const isMobile = () => true, updatePeek = () => {}, refreshNearby = () => {};\n' +
+    'let cardReturnFocus = null, cardPrevSheet = null;\n' +
+    ['presentCard', 'closeCard', 'cardSheetAfter', 'setSheet', 'sheetState'].map(n => lift(script, n)).join('\n') +
+    '\nthis.__x = { presentCard, setSheet, sheetState, card: () => cls.has("card-mode") };', ctx);
+  const c = ctx.__x;
+  c.setSheet('peek'); c.presentCard({}, null);
+  ok(c.sheetState() === 'half' && c.card(), 'sheet: a card opens in the half sheet');
+  c.setSheet('full');
+  ok(c.sheetState() === 'full' && c.card(), 'sheet: a card pulled up to full height stays open');
+  c.setSheet('half');
+  ok(c.sheetState() === 'half' && c.card(), 'sheet: ...and back to half');
+  c.setSheet('peek');
+  ok(c.sheetState() === 'peek' && !c.card(), 'sheet: a card put away to the stub is closed');
+  c.setSheet('full');
+  ok(c.sheetState() === 'full' && !c.card(), 'sheet: the stub then opens the trip form, not the card');
+  c.presentCard({}, null); c.setSheet('peek'); c.setSheet('full');
+  ok(c.sheetState() === 'full' && !c.card(), 'sheet: also for a card opened from the open sheet');
+}
+
+{
   // desktop popups are panned fully into view, clear of the side panel
   const { popupShift } = box(script, ['popupShift']);
   const view = { left: 352, top: 12, right: 1268, bottom: 788 };
